@@ -79,6 +79,7 @@ npm run build
 
 ## Testing
 
+- **Strict TDD**: write failing tests first, then implement until green. No production code without a preceding failing test. Tests run with `npm test` (vitest).
 - Manual install for testing: copy `main.js`, `manifest.json`, `styles.css` (if any) to:
     ```
     <Vault>/.obsidian/plugins/<plugin-id>/
