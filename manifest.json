@@ -2,7 +2,7 @@
 	"id": "obsidian-brain",
 	"name": "Obsidian Brain",
 	"version": "0.1.0",
-	"minAppVersion": "1.5.0",
+	"minAppVersion": "1.5.7",
 	"description": "Local-first second brain: semantic related notes, graph, and chat — all running on-device.",
 	"author": "Santhosh",
 	"isDesktopOnly": true

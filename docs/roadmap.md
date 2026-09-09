@@ -6,7 +6,7 @@
 ## Phase 0 — Skeleton & parser port ✅
 
 - Rename plugin: `id: obsidian-brain`, name "Obsidian Brain",
-  `isDesktopOnly: true`, `minAppVersion: 1.5.0`.
+  `isDesktopOnly: true`, `minAppVersion: 1.5.7`.
 - Minimal `main.ts` (lifecycle only) + settings tab scaffold.
 - Port `accio.ai/md-parsers.py` chunking pipeline to TypeScript
   (`src/chunking/`), extended to 4 heading levels.
