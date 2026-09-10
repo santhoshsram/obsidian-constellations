@@ -159,6 +159,13 @@ export class Brain {
 			this.logger.info(
 				`embedding pipeline ready on device=${created.device}`,
 			);
+			this.plugin.setStatus('Brain: loading embedding model…');
+			this.updateProgress({
+				isIndexing: true,
+				done: 0,
+				total: 0,
+				currentFile: `Loading ${model.displayName ?? model.modelId}…`,
+			});
 		} catch (e) {
 			this.updateProgress({
 				isIndexing: false,
@@ -178,7 +185,25 @@ export class Brain {
 			try {
 				const rerankerModel = this.currentRerankerModel();
 				this.logger.info(`creating reranker pipeline for model ${rerankerModel.modelId}`);
-				const createdReranker = await createRerankerPipeline(rerankerModel);
+				this.plugin.setStatus('Brain: loading reranker…');
+				this.updateProgress({
+					isIndexing: true,
+					done: 0,
+					total: 0,
+					currentFile: `Loading reranker (${rerankerModel.displayName ?? rerankerModel.modelId})…`,
+				});
+				const createdReranker = await createRerankerPipeline(rerankerModel, (p) => {
+					if (p.status === 'progress' && p.file) {
+						const pct = Math.round(p.progress ?? 0);
+						this.plugin.setStatus(`Brain: downloading reranker ${pct}%`);
+						this.updateProgress({
+							isIndexing: true,
+							done: pct,
+							total: 100,
+							currentFile: `Downloading reranker ${p.file} (${pct}%)`,
+						});
+					}
+				});
 				this.reranker = new TransformersReranker(
 					createdReranker.rerankPairs,
 					rerankerModel,
@@ -209,6 +234,13 @@ export class Brain {
 
 		let result;
 		try {
+			this.plugin.setStatus('Brain: scanning vault…');
+			this.updateProgress({
+				isIndexing: true,
+				done: 0,
+				total: 0,
+				currentFile: 'Scanning vault for changes…',
+			});
 			result = await this.service.syncVault(vault, (done, total, path) => {
 				this.plugin.setStatus(`Brain: indexing (${done}/${total})…`);
 				this.updateProgress({
@@ -277,6 +309,13 @@ export class Brain {
 		);
 		const vault = new ObsidianVaultSource(this.plugin.app);
 		try {
+			this.plugin.setStatus('Brain: scanning vault…');
+			this.updateProgress({
+				isIndexing: true,
+				done: 0,
+				total: 0,
+				currentFile: 'Scanning vault for changes…',
+			});
 			const result = await this.service.syncVault(vault, (done, total, path) => {
 				this.plugin.setStatus(`Brain: indexing (${done}/${total})…`);
 				this.updateProgress({
