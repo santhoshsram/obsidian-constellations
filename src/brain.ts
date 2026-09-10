@@ -14,14 +14,22 @@ import { ObsidianIndexStorage } from './obsidian/storage';
 import { ObsidianVaultSource } from './obsidian/vault-source';
 import { TransformersEmbedder } from './embed/embedder';
 import type { Embedder } from './embed/embedder';
-import { createEmbeddingPipeline } from './embed/pipeline';
-import { EMBEDDING_MODELS, DEFAULT_MODEL } from './embed/models';
+import { createEmbeddingPipeline, createRerankerPipeline } from './embed/pipeline';
+import {
+	EMBEDDING_MODELS,
+	DEFAULT_MODEL,
+	RERANKER_MODELS,
+	DEFAULT_RERANKER,
+} from './embed/models';
+import { TransformersReranker, type Reranker } from './embed/reranker';
 import { HeuristicTokenCounter } from './chunking/tokens';
 import {
-	relatedToNoteWithStrategy,
+	candidateChunksWithStrategy,
 	type RetrievalStrategy,
 } from './search/retrieval';
+import { relatedNotes } from './search/related';
 import type { RelatedNote } from './search/related';
+import { rerankCandidateChunks } from './search/rerank';
 import { debounce } from './utils/debounce';
 import { ConsoleLogger } from './utils/logger';
 import { BufferedLogFile } from './utils/file-log';
@@ -43,6 +51,7 @@ export class Brain {
 	private index: ChunkIndex | null = null;
 	private service: IndexingService | null = null;
 	private embedder: Embedder | null = null;
+	private reranker: Reranker | null = null;
 	private storage: ObsidianIndexStorage | null = null;
 	private ready = false;
 	private logger = new ConsoleLogger('obsidian-brain', {
@@ -87,6 +96,11 @@ export class Brain {
 	/** True once the model is loaded and the initial sync has completed. */
 	get isReady(): boolean {
 		return this.ready;
+	}
+
+	/** Set or swap the reranker instance (useful for testing or dynamic model loading). */
+	setReranker(reranker: Reranker | null): void {
+		this.reranker = reranker;
 	}
 
 	/** Load the model and index, then sync the vault. */
@@ -158,6 +172,28 @@ export class Brain {
 			return;
 		}
 		this.embedder = new TransformersEmbedder(pipe, model);
+
+		if (this.plugin.settings.rerankerEnabled !== false) {
+			try {
+				const rerankerModel = this.currentRerankerModel();
+				this.logger.info(`creating reranker pipeline for model ${rerankerModel.modelId}`);
+				const createdReranker = await createRerankerPipeline(rerankerModel);
+				this.reranker = new TransformersReranker(
+					createdReranker.rerankPairs,
+					rerankerModel,
+				);
+				this.logger.info(
+					`reranker pipeline ready on device=${createdReranker.device}`,
+				);
+			} catch (e) {
+				this.logger.warn(
+					'reranker model failed to load, retrieval will continue with vector scores',
+					{ kind: 'rerank' },
+					e,
+				);
+				console.warn('Obsidian brain: reranker model failed to load', e);
+			}
+		}
 
 		this.service = new IndexingService(
 			this.index,
@@ -268,7 +304,7 @@ export class Brain {
 	}
 
 	/** Notes related to the given (usually active) note. */
-	relatedTo(
+	async relatedTo(
 		filePath: string,
 		options?: {
 			strategy?: RetrievalStrategy;
@@ -276,18 +312,54 @@ export class Brain {
 			cursorHeading?: string;
 			chunkIndex?: number;
 		},
-	): RelatedNote[] {
+	): Promise<RelatedNote[]> {
 		if (!this.ready || !this.index) {
 			return [];
 		}
-		return relatedToNoteWithStrategy(this.index, filePath, {
-			strategy: options?.strategy ?? this.plugin.settings.retrievalStrategy,
+
+		const strategy =
+			options?.strategy ?? this.plugin.settings.retrievalStrategy;
+		const retrievalOptions = {
+			strategy,
 			cursorLine: options?.cursorLine,
 			cursorHeading: options?.cursorHeading,
 			chunkIndex: options?.chunkIndex,
 			maxNotes: this.plugin.settings.maxRelatedNotes,
 			maxChunksPerNote: this.plugin.settings.maxChunksPerNote,
 			minScore: this.plugin.settings.minScore,
+		};
+
+		// 1. Stage 1: Dense vector retrieval
+		const candidates = candidateChunksWithStrategy(
+			this.index,
+			filePath,
+			retrievalOptions,
+		);
+
+		if (candidates.length === 0) {
+			return [];
+		}
+
+		// 2. Stage 2: Cross-encoder reranking (if enabled and loaded)
+		if (this.reranker && this.plugin.settings.rerankerEnabled !== false) {
+			const vault = new ObsidianVaultSource(this.plugin.app);
+			const reranked = await rerankCandidateChunks({
+				candidates,
+				fileReader: vault,
+				reranker: this.reranker,
+				topK: 50,
+			});
+			return relatedNotes(reranked, {
+				excludeFile: filePath,
+				maxNotes: this.plugin.settings.maxRelatedNotes,
+				maxChunksPerNote: this.plugin.settings.maxChunksPerNote,
+			});
+		}
+
+		return relatedNotes(candidates, {
+			excludeFile: filePath,
+			maxNotes: this.plugin.settings.maxRelatedNotes,
+			maxChunksPerNote: this.plugin.settings.maxChunksPerNote,
 		});
 	}
 
@@ -357,6 +429,13 @@ export class Brain {
 		return (
 			EMBEDDING_MODELS[this.plugin.settings.embeddingModel] ??
 			DEFAULT_MODEL
+		);
+	}
+
+	private currentRerankerModel() {
+		return (
+			RERANKER_MODELS[this.plugin.settings.rerankerModel] ??
+			DEFAULT_RERANKER
 		);
 	}
 

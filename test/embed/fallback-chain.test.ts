@@ -39,4 +39,15 @@ describe('buildFallbackChain', () => {
 		expect(chain[0]).toEqual({ device: 'webgpu', dtype: 'q8' });
 		expect(chain).not.toContainEqual({ device: 'webgpu', dtype: 'fp16' });
 	});
+
+	it('works with RerankerModelSpec', async () => {
+		const { ETTIN_RERANKER_150M } = await import('../../src/embed/models');
+		const chain = buildFallbackChain(ETTIN_RERANKER_150M, true);
+		expect(chain).toEqual([
+			{ device: 'webgpu', dtype: 'fp16' },
+			{ device: 'webgpu', dtype: 'fp32' },
+			{ dtype: 'q8' },
+			{},
+		]);
+	});
 });

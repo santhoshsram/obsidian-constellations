@@ -117,3 +117,39 @@ export const BENCHMARK_MODELS = [
 	EMBEDDINGGEMMA_300M,
 ];
 
+export interface RerankerModelSpec {
+	/** Hugging Face model ID. */
+	modelId: string;
+	/** Clean human-readable name for UI or logging. */
+	displayName?: string;
+	/** Short hint or description. */
+	hint?: string;
+	/** Batch size for cross-encoder inference. */
+	batchSize: number;
+	/** Max sequence length cap passed to tokenizer. */
+	maxLength: number;
+	/** Quantization variants preferred in order (e.g. fp16, fp32). */
+	dtypes: string[];
+}
+
+/**
+ * Ettin Reranker 150M: ModernBERT-based cross-encoder with 150M params.
+ * Ships with official ONNX support and runs with high throughput on WebGPU in fp16.
+ * https://huggingface.co/cross-encoder/ettin-reranker-150m-v1
+ */
+export const ETTIN_RERANKER_150M: RerankerModelSpec = {
+	modelId: 'cross-encoder/ettin-reranker-150m-v1',
+	displayName: 'Ettin Reranker 150M',
+	hint: 'High accuracy cross-encoder',
+	batchSize: 16,
+	maxLength: 512,
+	dtypes: ['fp16', 'fp32'],
+};
+
+export const RERANKER_MODELS: Record<string, RerankerModelSpec> = {
+	[ETTIN_RERANKER_150M.modelId]: ETTIN_RERANKER_150M,
+};
+
+export const DEFAULT_RERANKER = ETTIN_RERANKER_150M;
+
+

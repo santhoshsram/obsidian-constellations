@@ -156,6 +156,20 @@ The plugin provides three matching modes tailored to different note structures a
 - **How it works**: Computes the document centroid $\vec{q} = \frac{1}{N} \sum_{i=1}^N \vec{v}_i$ across all chunks in the note and runs brute-force cosine similarity against the vault.
 - **Best for**: Short, coherent, single-topic notes where overall thematic overlap is desired rather than section-specific links.
 
+## Two-Stage Reranking (Cross-Encoder)
+
+To maximize connection precision without sacrificing speed, retrieval operates as a two-stage funnel:
+
+1. **Stage 1 — Fast Dense Vector Retrieval**:
+   - Executes the selected matching mode (Detailed MaxSim, Focused, or Broad) across all vault chunks.
+   - Funnels the top 50 candidate chunks based on cosine similarity.
+2. **Stage 2 — Cross-Encoder Reranking (`cross-encoder/ettin-reranker-150m-v1`)**:
+   - **Parallel cached reads**: Reads candidate files concurrently via `app.vault.cachedRead()` and extracts precise text slices using 0-indexed line coordinates (`[startLine..endLine]`).
+   - **Pair construction**: Constructs `(source_section_text, candidate_section_text)` pairs for Detailed mode, or `(cursor_chunk_text, candidate_section_text)` for Focused mode.
+   - **Batched WebGPU inference**: Evaluates all candidate pairs in a single batched pass with fp16 precision.
+   - **Rescoring & grouping**: Updates candidate scores with cross-encoder logits and passes them to `relatedNotes` to group by file, apply `maxChunksPerNote`, and present the top `maxRelatedNotes`.
+   - **Resilient fallback**: If the reranker model is not loaded or encounters an issue, retrieval seamlessly falls back to vector scores without interrupting the user.
+
 ### Retrieval Enhancements (Planned)
 
 - **Hybrid Search (Lexical BM25 + Dense Vectors)**:

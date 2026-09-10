@@ -101,7 +101,7 @@ export default class ObsidianBrainPlugin extends Plugin {
 		this.brain.refreshLogger();
 	}
 
-	private showRelatedNotes(strategyOverride?: RetrievalStrategy) {
+	private async showRelatedNotes(strategyOverride?: RetrievalStrategy): Promise<void> {
 		if (!this.brain.isReady) {
 			new Notice('Obsidian brain is still indexing — try again shortly.');
 			return;
@@ -120,7 +120,7 @@ export default class ObsidianBrainPlugin extends Plugin {
 				? getActiveHeadingAtCursor(this, file, cursorLine)
 				: undefined;
 
-		const related = this.brain.relatedTo(file.path, {
+		const related = await this.brain.relatedTo(file.path, {
 			strategy,
 			cursorLine,
 			cursorHeading,

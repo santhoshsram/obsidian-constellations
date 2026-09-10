@@ -70,4 +70,20 @@ describe('relatedToNote', () => {
 		});
 		expect(results).toEqual([]);
 	});
+
+	it('candidateChunksWithStrategy populates sourceChunk and matchedSourceHeading', async () => {
+		const { candidateChunksWithStrategy } = await import('../../src/search/retrieval');
+		const index = await buildIndex();
+		const candidates = candidateChunksWithStrategy(index, 'a.md', {
+			strategy: 'maxsim',
+			maxNotes: 10,
+			maxChunksPerNote: 3,
+			minScore: 0.5,
+		});
+		expect(candidates.length).toBeGreaterThan(0);
+		expect(candidates[0]?.record.filePath).toBe('b.md');
+		expect(candidates[0]?.sourceChunk).toBeDefined();
+		expect(candidates[0]?.sourceChunk?.filePath).toBe('a.md');
+	});
 });
+

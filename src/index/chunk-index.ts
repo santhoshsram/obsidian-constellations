@@ -33,6 +33,7 @@ export interface ScoredChunk {
 	record: ChunkRecord;
 	score: number;
 	matchedSourceHeading?: string;
+	sourceChunk?: ChunkRecord;
 }
 
 /** Embeds a batch of texts, returning one vector per text. */

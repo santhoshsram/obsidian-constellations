@@ -28,7 +28,8 @@ import 'onnxruntime-web/webgpu';
 
 delete (globalThis as Record<symbol, unknown>)[Symbol.for('onnxruntime')];
 
-import type { EmbeddingModelSpec } from './models';
+import type { EmbeddingModelSpec, RerankerModelSpec } from './models';
+import type { RerankPairsFn, TextPair } from './reranker';
 
 export interface PipelineProgress {
 	status: string;
@@ -68,7 +69,7 @@ export function selectDeviceConfig(
  * then WASM q8, then the bare WASM-auto fallback.
  */
 export function buildFallbackChain(
-	model: EmbeddingModelSpec,
+	model: { dtypes: string[] },
 	webgpuAvailable: boolean,
 ): DeviceConfig[] {
 	const chain: DeviceConfig[] = [];
@@ -81,10 +82,7 @@ export function buildFallbackChain(
 	return chain;
 }
 
-export async function createEmbeddingPipeline(
-	model: EmbeddingModelSpec,
-	onProgress?: (progress: PipelineProgress) => void,
-): Promise<{ pipe: EmbeddingPipelineFn; device: DeviceMode }> {
+async function loadTransformers(): Promise<typeof import('@huggingface/transformers')> {
 	// process.release is read-only in Obsidian's renderer, so we cannot
 	// patch release.name directly. Instead, swap the global `process` for
 	// a Proxy that overrides only `release.name`, just for the duration
@@ -113,7 +111,7 @@ export async function createEmbeddingPipeline(
 	} finally {
 		globalScope.process = originalProcess;
 	}
-	const { pipeline, env } = transformers;
+	const { env } = transformers;
 	env.allowRemoteModels = true; // one-time download from Hugging Face
 	env.allowLocalModels = false; // models come from the HF hub cache only
 	env.useBrowserCache = true;
@@ -121,6 +119,15 @@ export async function createEmbeddingPipeline(
 	if (wasm) {
 		wasm.numThreads = 4;
 	}
+	return transformers;
+}
+
+export async function createEmbeddingPipeline(
+	model: EmbeddingModelSpec,
+	onProgress?: (progress: PipelineProgress) => void,
+): Promise<{ pipe: EmbeddingPipelineFn; device: DeviceMode }> {
+	const transformers = await loadTransformers();
+	const { pipeline } = transformers;
 
 	// Report WebGPU availability so we know whether WASM is a fallback or
 	// the only option (WASM single-thread is slow).
@@ -149,6 +156,65 @@ export async function createEmbeddingPipeline(
 	throw lastError;
 }
 
+export async function createRerankerPipeline(
+	model: RerankerModelSpec,
+	onProgress?: (progress: PipelineProgress) => void,
+): Promise<{ rerankPairs: RerankPairsFn; device: DeviceMode }> {
+	const transformers = await loadTransformers();
+	const { AutoTokenizer, AutoModelForSequenceClassification } = transformers;
+
+	const gpuStatus = await probeWebgpu();
+	console.warn(`Obsidian brain: reranker webgpu probe=${gpuStatus}`, gpuStatus);
+
+	const tokenizer = await AutoTokenizer.from_pretrained(model.modelId, {
+		progress_callback: onProgress,
+	});
+
+	const fallbacks = buildFallbackChain(model, gpuStatus === 'usable');
+	let lastError: unknown;
+	for (const cfg of fallbacks) {
+		try {
+			const classifier = await AutoModelForSequenceClassification.from_pretrained(
+				model.modelId,
+				{
+					...(cfg as Record<string, unknown>),
+					progress_callback: onProgress,
+				},
+			);
+			const device: DeviceMode = cfg.device === 'webgpu' ? 'webgpu' : 'wasm';
+			console.warn(`Obsidian brain: reranker using device=${device}`);
+
+			const rerankPairs: RerankPairsFn = async (pairs: TextPair[]): Promise<number[]> => {
+				if (pairs.length === 0) return [];
+				const queries = pairs.map((p) => p.query);
+				const passages = pairs.map((p) => p.passage);
+				const inputs = (tokenizer as (texts: string[], options: Record<string, unknown>) => unknown)(queries, {
+					text_pair: passages,
+					padding: true,
+					truncation: true,
+					max_length: model.maxLength,
+				});
+				const outputs = (await (classifier as (inp: unknown) => Promise<{ logits: { data: ArrayLike<number> } }>)(inputs));
+				const data = outputs.logits.data;
+				const scores: number[] = [];
+				for (let i = 0; i < pairs.length; i++) {
+					scores.push(Number(data[i] ?? 0));
+				}
+				return scores;
+			};
+
+			return { rerankPairs, device };
+		} catch (e) {
+			console.warn(
+				`Obsidian brain: reranker pipeline failed with config ${JSON.stringify(cfg)}`,
+				e,
+			);
+			lastError = e;
+		}
+	}
+	throw lastError;
+}
+
 async function probeWebgpu(): Promise<'usable' | 'missing' | 'failed'> {
 	const gpu = (navigator as { gpu?: { requestAdapter?(): Promise<unknown> } })
 		.gpu;
@@ -162,3 +228,4 @@ async function probeWebgpu(): Promise<'usable' | 'missing' | 'failed'> {
 		return 'failed';
 	}
 }
+

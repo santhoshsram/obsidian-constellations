@@ -1,11 +1,15 @@
 import { App, ButtonComponent, PluginSettingTab, Setting } from 'obsidian';
 import type ObsidianBrainPlugin from './main';
-import { EMBEDDING_MODELS, DEFAULT_MODEL } from './embed/models';
+import { EMBEDDING_MODELS, DEFAULT_MODEL, DEFAULT_RERANKER } from './embed/models';
 import type { RetrievalStrategy } from './search/retrieval';
 
 export interface ObsidianBrainSettings {
 	/** Hugging Face model ID used for embeddings. */
 	embeddingModel: string;
+	/** Hugging Face model ID used for reranking. */
+	rerankerModel: string;
+	/** Whether cross-encoder reranking is enabled. */
+	rerankerEnabled: boolean;
 	/** Default retrieval strategy for related notes. */
 	retrievalStrategy: RetrievalStrategy;
 	/** Max related notes shown for the active note. */
@@ -22,6 +26,8 @@ export interface ObsidianBrainSettings {
 
 export const DEFAULT_SETTINGS: ObsidianBrainSettings = {
 	embeddingModel: DEFAULT_MODEL.modelId,
+	rerankerModel: DEFAULT_RERANKER.modelId,
+	rerankerEnabled: true,
 	retrievalStrategy: 'maxsim',
 	maxRelatedNotes: 10,
 	maxChunksPerNote: 3,

@@ -37,3 +37,15 @@ describe('model registry', () => {
 		}
 	});
 });
+
+describe('reranker model registry', () => {
+	it('defines DEFAULT_RERANKER with ettin-reranker-150m-v1 and fp16 support', async () => {
+		const { DEFAULT_RERANKER, RERANKER_MODELS } = await import('../../src/embed/models');
+		expect(DEFAULT_RERANKER).toBeDefined();
+		expect(DEFAULT_RERANKER.modelId).toBe('cross-encoder/ettin-reranker-150m-v1');
+		expect(DEFAULT_RERANKER.dtypes).toContain('fp16');
+		expect(DEFAULT_RERANKER.batchSize).toBeGreaterThan(0);
+		expect(DEFAULT_RERANKER.maxLength).toBeGreaterThanOrEqual(256);
+		expect(RERANKER_MODELS[DEFAULT_RERANKER.modelId]).toBe(DEFAULT_RERANKER);
+	});
+});
