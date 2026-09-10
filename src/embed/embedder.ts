@@ -22,6 +22,15 @@ export interface Embedder {
 	embedQuery(text: string): Promise<Float32Array>;
 }
 
+/**
+ * Conservative chars/token ratio for pre-truncation.
+ * FeatureExtractionPipeline._call ignores `truncation`/`max_length` options —
+ * it calls the tokenizer with a hardcoded `truncation: true` but no max_length,
+ * relying on the model's tokenizer config (which may not match the ONNX limit).
+ * Pre-truncating by chars is the only reliable guard.
+ */
+const CHARS_PER_TOKEN = 3;
+
 export class TransformersEmbedder implements Embedder {
 	constructor(
 		private pipe: FeatureExtractionFn,
@@ -34,12 +43,18 @@ export class TransformersEmbedder implements Embedder {
 
 	async embedDocuments(texts: string[]): Promise<Float32Array[]> {
 		const out: Float32Array[] = [];
+		const charBudget = this.model.maxLength * CHARS_PER_TOKEN;
 		for (let i = 0; i < texts.length; i += this.model.batchSize) {
 			const batch = texts
 				.slice(i, i + this.model.batchSize)
-				.map((t) => this.model.documentPrefix + t);
+				.map((t) => {
+					const prefixed = this.model.documentPrefix + t;
+					return prefixed.length > charBudget
+						? prefixed.slice(0, charBudget)
+						: prefixed;
+				});
 			const result = await this.pipe(batch, {
-				pooling: 'mean',
+				pooling: this.model.pooling ?? 'mean',
 				normalize: true,
 			});
 			for (let r = 0; r < batch.length; r++) {
@@ -50,8 +65,13 @@ export class TransformersEmbedder implements Embedder {
 	}
 
 	async embedQuery(text: string): Promise<Float32Array> {
-		const result = await this.pipe([this.model.queryPrefix + text], {
-			pooling: 'mean',
+		const charBudget = this.model.maxLength * CHARS_PER_TOKEN;
+		let prefixed = this.model.queryPrefix + text;
+		if (prefixed.length > charBudget) {
+			prefixed = prefixed.slice(0, charBudget);
+		}
+		const result = await this.pipe([prefixed], {
+			pooling: this.model.pooling ?? 'mean',
 			normalize: true,
 		});
 		return sliceRow(result.data, 0, this.dimensions);

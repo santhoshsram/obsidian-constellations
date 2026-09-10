@@ -4,7 +4,7 @@ import type { VaultSource } from '../../src/index/indexing-service';
 import { ChunkIndex } from '../../src/index/chunk-index';
 import { BruteForceVectorStore } from '../../src/index/vector-store';
 import { HeuristicTokenCounter } from '../../src/chunking/tokens';
-import { NOMIC_EMBED_TEXT_V1_5 } from '../../src/embed/models';
+import { DEFAULT_MODEL } from '../../src/embed/models';
 
 /** In-memory vault fake. */
 class FakeVault implements VaultSource {
@@ -44,7 +44,7 @@ function makeService(embedder = fakeEmbedder()) {
 		index,
 		embedder,
 		new HeuristicTokenCounter(),
-		NOMIC_EMBED_TEXT_V1_5,
+		DEFAULT_MODEL,
 	);
 	return { service, index, embedder };
 }
@@ -59,6 +59,7 @@ describe('IndexingService', () => {
 		const result = await service.syncVault(vault);
 		expect(result.indexed).toBe(2);
 		expect(result.removed).toBe(0);
+		expect(result.total).toBe(2);
 		expect(index.size).toBe(2);
 		expect(embedder.calls.length).toBeGreaterThan(0);
 	});
@@ -110,8 +111,8 @@ describe('IndexingService', () => {
 		await service.syncVault(vault);
 
 		const state = service.getState();
-		expect(state.modelId).toBe(NOMIC_EMBED_TEXT_V1_5.modelId);
-		expect(state.dimensions).toBe(NOMIC_EMBED_TEXT_V1_5.dimensions);
+		expect(state.modelId).toBe(DEFAULT_MODEL.modelId);
+		expect(state.dimensions).toBe(DEFAULT_MODEL.dimensions);
 		expect(Object.keys(state.fileHashes)).toEqual(['a.md']);
 	});
 
@@ -128,6 +129,28 @@ describe('IndexingService', () => {
 		const result = await restored.syncVault(vault);
 		expect(result.skipped).toBe(1);
 		expect(embedder.calls).toEqual([]);
+	});
+
+	it('continues indexing when a file fails and reports the failure', async () => {
+		const vault = new FakeVault();
+		vault.files.set('good.md', LONG);
+		vault.files.set('bad.md', LONG);
+		vault.files.set('good2.md', LONG);
+		const { service, index } = makeService();
+
+		// Make reading bad.md explode mid-sync by breaking its chunk content
+		const origRead = vault.read.bind(vault);
+		vault.read = async (path: string) => {
+			if (path === 'bad.md') {
+				throw new Error('read exploded');
+			}
+			return origRead(path);
+		};
+
+		const result = await service.syncVault(vault);
+		expect(result.indexed).toBe(2);
+		expect(result.failed).toBe(1);
+		expect([...index.indexedFiles()].sort()).toEqual(['good.md', 'good2.md']);
 	});
 
 	it('indexFile and removeFile keep hashes in sync', async () => {

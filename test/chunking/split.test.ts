@@ -70,10 +70,20 @@ describe('splitByMaxTokens', () => {
 	});
 
 	it('truncates when no delimiter allows a split', () => {
-		const text = 'x'.repeat(100); // no \n\n, \n or '. ' delimiters
+		const text = 'x'.repeat(100); // no \n\n, \n, '. ', or ' ' delimiters
 		const chunks = splitByMaxTokens('', text, counter, 10);
 		expect(chunks).toHaveLength(1);
 		expect(chunks[0]).toHaveLength(10);
+	});
+
+	it('splits on space delimiter when no newlines or periods exist', () => {
+		const words = Array(20).fill('hello').join(' ');
+		const chunks = splitByMaxTokens('T', words, counter, 40);
+		expect(chunks.length).toBeGreaterThan(1);
+		for (const chunk of chunks) {
+			expect(chunk.startsWith('T\n')).toBe(true);
+			expect(counter.count(chunk)).toBeLessThanOrEqual(40);
+		}
 	});
 
 	it('works with the heuristic token counter', () => {

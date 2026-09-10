@@ -1,6 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { TransformersEmbedder } from '../../src/embed/embedder';
-import { NOMIC_EMBED_TEXT_V1_5 } from '../../src/embed/models';
+import type { EmbeddingModelSpec } from '../../src/embed/models';
+
+const TEST_MODEL: EmbeddingModelSpec = {
+	modelId: 'test/embedding-model',
+	dimensions: 768,
+	documentPrefix: 'search_document: ',
+	queryPrefix: 'search_query: ',
+	maxTokensPerChunk: 2048,
+	batchSize: 16,
+	dtypes: ['fp16', 'q8', 'fp32'],
+	maxLength: 2048,
+};
 
 /** Fake transformers.js feature-extraction pipeline. */
 function fakePipe(dimensions: number) {
@@ -19,7 +30,7 @@ function fakePipe(dimensions: number) {
 describe('TransformersEmbedder', () => {
 	it('prefixes documents with the model document prefix', async () => {
 		const { fn, calls } = fakePipe(768);
-		const embedder = new TransformersEmbedder(fn, NOMIC_EMBED_TEXT_V1_5);
+		const embedder = new TransformersEmbedder(fn, TEST_MODEL);
 		await embedder.embedDocuments(['chunk one', 'chunk two']);
 		expect(calls[0]).toEqual([
 			'search_document: chunk one',
@@ -27,9 +38,40 @@ describe('TransformersEmbedder', () => {
 		]);
 	});
 
+	it('pre-truncates inputs to maxLength * 3 chars (position-embedding safety)', async () => {
+		// FeatureExtractionPipeline._call ignores truncation/max_length options,
+		// so we guard by slicing texts before the pipe call.
+		const seen: string[][] = [];
+		const pipe = async (
+			texts: string[],
+			_options?: Record<string, unknown>,
+		) => {
+			seen.push(texts);
+			return {
+				data: new Float32Array(texts.length * 2),
+				dims: [texts.length, 2],
+			};
+		};
+		const maxLength = 10; // small limit for easy verification
+		const embedder = new TransformersEmbedder(pipe, {
+			...TEST_MODEL,
+			maxLength,
+			documentPrefix: '',
+			queryPrefix: '',
+		});
+		const longText = 'a'.repeat(maxLength * 3 + 50); // definitely over budget
+		await embedder.embedDocuments([longText]);
+		await embedder.embedQuery(longText);
+		for (const batch of seen) {
+			for (const text of batch) {
+				expect(text.length).toBeLessThanOrEqual(maxLength * 3);
+			}
+		}
+	});
+
 	it('prefixes queries with the model query prefix', async () => {
 		const { fn, calls } = fakePipe(768);
-		const embedder = new TransformersEmbedder(fn, NOMIC_EMBED_TEXT_V1_5);
+		const embedder = new TransformersEmbedder(fn, TEST_MODEL);
 		await embedder.embedQuery('what is async?');
 		expect(calls[0]).toEqual(['search_query: what is async?']);
 	});
@@ -37,7 +79,7 @@ describe('TransformersEmbedder', () => {
 	it('slices the result tensor into one vector per text', async () => {
 		const { fn } = fakePipe(3);
 		const embedder = new TransformersEmbedder(fn, {
-			...NOMIC_EMBED_TEXT_V1_5,
+			...TEST_MODEL,
 			dimensions: 3,
 		});
 		const vectors = await embedder.embedDocuments(['a', 'b']);
@@ -50,7 +92,7 @@ describe('TransformersEmbedder', () => {
 	it('embeds in batches', async () => {
 		const { fn, calls } = fakePipe(2);
 		const embedder = new TransformersEmbedder(fn, {
-			...NOMIC_EMBED_TEXT_V1_5,
+			...TEST_MODEL,
 			dimensions: 2,
 			batchSize: 2,
 		});
@@ -62,7 +104,7 @@ describe('TransformersEmbedder', () => {
 	it('embedQuery returns a single vector', async () => {
 		const { fn } = fakePipe(4);
 		const embedder = new TransformersEmbedder(fn, {
-			...NOMIC_EMBED_TEXT_V1_5,
+			...TEST_MODEL,
 			dimensions: 4,
 		});
 		const vector = await embedder.embedQuery('q');

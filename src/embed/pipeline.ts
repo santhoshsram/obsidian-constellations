@@ -28,33 +28,137 @@ import 'onnxruntime-web/webgpu';
 
 delete (globalThis as Record<symbol, unknown>)[Symbol.for('onnxruntime')];
 
+import type { EmbeddingModelSpec } from './models';
+
 export interface PipelineProgress {
 	status: string;
 	file?: string;
 	progress?: number;
 }
 
+export type DeviceMode = 'webgpu' | 'wasm' | 'unknown';
+
+export interface DeviceConfig {
+	device?: string;
+	dtype?: string;
+}
+
+/** Minimal shape of a transformers.js feature-extraction pipeline. */
+export type EmbeddingPipelineFn = (
+	texts: string[],
+	options?: Record<string, unknown>,
+) => Promise<{ data: Float32Array | number[]; dims: number[] }>;
+
+/** Ordered fallback device configurations, WebGPU-favouring. */
+export function selectDeviceConfig(
+	webgpuAvailable: boolean,
+): { config: DeviceConfig; fallbacks: DeviceConfig[] } {
+	const all: DeviceConfig[] = [
+		{ device: 'webgpu', dtype: 'q8' },
+		{ dtype: 'q8' },
+		{},
+	];
+	const fallbacks = webgpuAvailable ? all : all.slice(1);
+	return { config: fallbacks[0] ?? {}, fallbacks };
+}
+
+/**
+ * Build the device fallback chain for a specific model from its shipped
+ * dtype variants: each spec dtype tried on WebGPU first (if available),
+ * then WASM q8, then the bare WASM-auto fallback.
+ */
+export function buildFallbackChain(
+	model: EmbeddingModelSpec,
+	webgpuAvailable: boolean,
+): DeviceConfig[] {
+	const chain: DeviceConfig[] = [];
+	if (webgpuAvailable) {
+		for (const dtype of model.dtypes) {
+			chain.push({ device: 'webgpu', dtype });
+		}
+	}
+	chain.push({ dtype: 'q8' }, {});
+	return chain;
+}
+
 export async function createEmbeddingPipeline(
-	modelId: string,
+	model: EmbeddingModelSpec,
 	onProgress?: (progress: PipelineProgress) => void,
-) {
-	const release = process.release as { name?: string };
-	const originalName = release.name;
-	release.name = 'obsidian-renderer';
+): Promise<{ pipe: EmbeddingPipelineFn; device: DeviceMode }> {
+	// process.release is read-only in Obsidian's renderer, so we cannot
+	// patch release.name directly. Instead, swap the global `process` for
+	// a Proxy that overrides only `release.name`, just for the duration
+	// of the dynamic import (transformers.js snapshots its environment
+	// detection once, at module evaluation).
+	const globalScope = globalThis as { process?: unknown };
+	const originalProcess = globalScope.process;
+	if (typeof originalProcess !== 'object' || originalProcess === null) {
+		throw new Error('expected a global process object');
+	}
+	globalScope.process = new Proxy(originalProcess, {
+		get(target, prop, receiver) {
+			if (prop === 'release') {
+				const release = Reflect.get(target, prop, receiver) as Record<
+					string,
+					unknown
+				>;
+				return { ...release, name: 'obsidian-renderer' };
+			}
+			return Reflect.get(target, prop, receiver) as unknown;
+		},
+	});
 	let transformers: typeof import('@huggingface/transformers');
 	try {
 		transformers = await import('@huggingface/transformers');
 	} finally {
-		release.name = originalName;
+		globalScope.process = originalProcess;
 	}
-
 	const { pipeline, env } = transformers;
 	env.allowRemoteModels = true; // one-time download from Hugging Face
 	env.allowLocalModels = false; // models come from the HF hub cache only
+	env.useBrowserCache = true;
+	const wasm = env.backends.onnx.wasm;
+	if (wasm) {
+		wasm.numThreads = 4;
+	}
 
-	const pipe = await pipeline('feature-extraction', modelId, {
-		dtype: 'q8',
-		progress_callback: onProgress,
-	});
-	return pipe;
+	// Report WebGPU availability so we know whether WASM is a fallback or
+	// the only option (WASM single-thread is slow).
+	const gpuStatus = await probeWebgpu();
+	console.warn(`Obsidian brain: webgpu probe=${gpuStatus}`, gpuStatus);
+
+	const fallbacks = buildFallbackChain(model, gpuStatus === 'usable');
+	let lastError: unknown;
+	for (const cfg of fallbacks) {
+		try {
+			const pipe = await pipeline('feature-extraction', model.modelId, {
+				...(cfg as Record<string, unknown>),
+				progress_callback: onProgress,
+			});
+			const device: DeviceMode = cfg.device === 'webgpu' ? 'webgpu' : 'wasm';
+			console.warn(`Obsidian brain: using device=${device}`);
+			return { pipe, device };
+		} catch (e) {
+			console.warn(
+				`Obsidian brain: pipeline failed with config ${JSON.stringify(cfg)}`,
+				e,
+			);
+			lastError = e;
+		}
+	}
+	throw lastError;
+}
+
+async function probeWebgpu(): Promise<'usable' | 'missing' | 'failed'> {
+	const gpu = (navigator as { gpu?: { requestAdapter?(): Promise<unknown> } })
+		.gpu;
+	if (!gpu) {
+		return 'missing';
+	}
+	try {
+		const adapter = await gpu.requestAdapter?.();
+		return adapter ? 'usable' : 'failed';
+	} catch {
+		return 'failed';
+	}
 }

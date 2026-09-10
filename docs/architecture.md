@@ -29,19 +29,16 @@ Semantic graph and chat follow in later phases.
 | Tests | vitest; parser verified against Python reference outputs |
 | Chat (Phase 4) | Ollama / LM Studio via OpenAI-compatible API |
 
-### Why nomic-embed-text-v1.5
+### Default Model: embeddinggemma-300m-ONNX
 
-- 8192-token context → keeps the accio.ai `MAX_TOKENS = 2048` chunking
-  intact (bge-small's 512 ctx would force much smaller chunks).
-- First-class transformers.js support (official ONNX weights).
-- Matryoshka embeddings: 768d truncatable to 256d for a ~3× smaller
-  index with negligible quality loss, if ever needed.
-- Task prefixes: `search_document:` for vault chunks, `search_query:`
-  for queries/active notes. Baked into the embedding service.
+- 2048-token context → keeps the accio.ai `MAX_TOKENS = 2048` chunking intact.
+- Modern Google embedding architecture with top-tier retrieval quality (MTEB 68.1).
+- Ships full ONNX variant set (`q8`, `q4`, `fp32`). Runs on WebGPU at ~11-12 ch/s.
+- Clean document and query embeddings (no awkward task prefixes required).
 
-Alternatives (settings, later): `bge-small-en-v1.5` (fast/light),
-`bge-base-en-v1.5` (quality). `embeddinggemma-300m` is gated on HF;
-`Qwen3-Embedding-0.6B` has no official transformers.js path. Deferred.
+Alternatives in registry:
+- `Snowflake/snowflake-arctic-embed-xs` (384d, 512-token, 115 ch/s, MTEB 62.5 — fast/lightweight pick)
+- `Xenova/all-MiniLM-L6-v2` (384d, 256-token, 120 ch/s — classic standard)
 
 ## Chunking pipeline (port of `accio.ai/md-parsers.py`)
 
@@ -59,7 +56,7 @@ from 3 to **4 heading levels**:
    bullets, links) → `stripSpaces` → `removeEmptyLines` → lowercase.
 4. `splitByMaxTokens(titles, text, tokenizer, MAX_TOKENS=2048)` —
    recursive halving via `halvedByDelimiter` on `"\n\n"` → `"\n"` →
-   `". "`, balancing token counts; truncate after 5 recursions.
+   `". "` → `" "`, balancing token counts; truncate after 5 recursions.
 
 Token counting uses the model's own tokenizer (transformers.js). A
 `TokenCounter` interface allows a heuristic fallback (~4 chars/token)
@@ -72,12 +69,21 @@ All under `<Vault>/.obsidian/plugins/obsidian-brain/` via
 
 - **`vectors.bin`** — one contiguous `Float32Array` (n_chunks × dims),
   row = chunk. Written with `writeBinary`.
-- **`chunks.json`** — chunk metadata (see below). Offsets, not text
-  copies: no duplication of vault content.
+- **`chunks.json`** — chunk metadata (offsets, not text copies; see below).
 - **`state.json`** — per-file content hashes, model ID, index stats.
   Used for catch-up scans and to trigger full rebuilds on model change.
 
-### Chunk ↔ vector referencing
+### Space Optimization: Zero Text Duplication Policy
+
+**Never store text copies in `chunks.json`.**
+Storing raw or cleaned text strings in `chunks.json` causes a 2× vault storage footprint penalty (duplicating the vault's entire content on disk). The note content already lives in the user's markdown files.
+
+- `chunks.json` only stores structural metadata and line coordinates:
+  - `filePath`, `headingPath`, `startLine`, `endLine`, `id` (sha1), `vectorRow`.
+- **UI Snippets on Demand:** When the related-notes sidebar or search view needs to display a text preview for a chunk, it reads the note from disk via `app.vault.read(file)` and slices lines `[startLine..endLine]`.
+- **In-memory during active indexing:** Text is held in memory only while passing through chunking and embedding, then discarded from persistent storage.
+
+### Chunk ↔ vector referencing & Granular Navigation
 
 Chunk identity is **content-addressed**, not position-based:
 
@@ -86,8 +92,8 @@ interface ChunkRecord {
   id: string;            // sha1 of cleanText — stable across edits/renames
   filePath: string;
   headingPath: string[]; // ["Note title", "Section", "Subsection"]
-  startLine: number;     // click-through navigation
-  endLine: number;
+  startLine: number;     // 1-indexed start line in source file
+  endLine: number;       // 1-indexed end line in source file
   vectorRow: number;     // row into vectors.bin
 }
 ```
@@ -98,8 +104,9 @@ interface ChunkRecord {
 - **Edit efficiency:** re-chunk a changed file, hash each chunk, reuse
   embeddings for unchanged chunks — editing a paragraph costs one
   embedding call.
-- **Chunk → note:** `filePath` + `startLine` (or `#heading` subpath)
-  for navigation.
+- **Granular Navigation (Phase 2):**
+  - **Heading navigation:** `app.workspace.openLinkText(`${filePath}#${deepestHeading}`, '')` jumps to the section.
+  - **Exact Block navigation:** `leaf.openFile(file, { eState: { line: chunk.startLine, focus: true } })` scrolls the editor directly to the specific paragraph/block without modifying the note or adding synthetic block IDs (`^...`).
 
 ### Why no ANN library (yet)
 
@@ -122,12 +129,28 @@ Event-driven, never scheduled:
 
 ## Retrieval
 
-1. Embed the query (or active note's chunks) with the `search_query:`
-   prefix.
-2. Cosine similarity vs. all chunk vectors (brute force).
-3. Exclude the active note itself; apply score threshold.
-4. Group by file, keep top 2–3 chunks per note, rank notes by best
-   chunk score.
+### Current Approach: Mean Vector Pooling
+1. Retrieve all stored chunk vectors for the active note: `vectors = index.vectorsForFile(filePath)`.
+2. Compute the **mean vector** (centroid) $\vec{q} = \frac{1}{N} \sum_{i=1}^N \vec{v}_i$.
+   - **Cost:** Zero model inference calls; instant sub-millisecond calculation from existing in-memory vectors.
+3. Cosine similarity of $\vec{q}$ vs. all chunk vectors across the vault (brute force).
+4. Exclude the active note itself (`excludeFile`); apply score threshold (`minScore`).
+5. Group by file, keep top 2–3 chunks per note, and rank candidate notes by their best chunk score (`bestScore`).
+
+### Retrieval Enhancements (Planned)
+
+1. **Active Section / Cursor-Context Matching**:
+   - Instead of querying with the entire document's centroid, query using only the chunk corresponding to the user's active cursor line (`cursor.line`) or current section heading.
+   - **Benefit:** Solves topic dilution when notes are long or heterogeneous (e.g. daily notes or multi-topic essays), surfacing connections hyper-relevant to the exact paragraph being read or edited.
+
+2. **Chunk-to-Chunk MaxSim (All-Pairs Matching)**:
+   - For a multi-topic note, evaluate each chunk $\vec{v}_k$ of the active note individually against all vault chunks:
+     $$\text{Score}(\text{doc}) = \max_{c \in \text{active}} \max_{c' \in \text{doc}} \text{cosine}(c, c')$$
+   - **Benefit:** Allows a note with 5 distinct concepts to surface the best connections for *each* concept independently, without averaging them into an unrepresentative middle ground. Still reuses cached chunk vectors with zero inference overhead.
+
+3. **Hybrid Search (Lexical BM25 + Dense Vectors)**:
+   - Combine sparse term matching (BM25 for exact IDs, technical terms, code symbols) with dense semantic embeddings using Reciprocal Rank Fusion (RRF).
+
 
 ## UI (Phase 2, mocked in HTML first)
 
@@ -145,3 +168,26 @@ Event-driven, never scheduled:
 - No telemetry. Index files live in the plugin dir, outside notes.
 - All listeners/intervals registered via `register*` helpers for clean
   unload.
+
+## Appendix: transformers.js in Obsidian (hard-won notes)
+
+Obsidian's Electron renderer has Node integration, so
+`process.release.name === 'node'` and transformers.js misdetects the
+environment, selecting the `onnxruntime-node` backend — an empty stub in
+the web build. Additionally, modern onnxruntime-web self-registers under
+`globalThis[Symbol.for('onnxruntime')]`, and transformers.js's symbol
+branch never populates `supportedDevices`, so every device is rejected.
+
+**Our fix** (`src/embed/pipeline.ts`): import onnxruntime-web first and
+delete the global symbol; then patch `process.release.name` around a
+dynamic `import('@huggingface/transformers')` (restored immediately
+after). transformers.js then takes its web branch: real WASM runtime,
+correct device lists. Device fallback chain: WebGPU q8 → WASM q8 →
+WASM auto (no device key).
+
+**Why not load transformers.js from a CDN like Smart Connections?**
+Smart Connections marks `@huggingface/transformers` as external and
+dynamically imports it from jsdelivr at runtime. That avoids all
+bundling issues but means executing remote code on every startup —
+against Obsidian's plugin guidelines and this project's security rules.
+We bundle instead.

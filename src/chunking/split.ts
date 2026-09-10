@@ -15,7 +15,7 @@ export const MAX_TOKENS = 2048;
 export const MAX_RECURSION = 5;
 
 /** Delimiters tried in order when halving oversized sections. */
-const DELIMITERS = ['\n\n', '\n', '. '];
+const DELIMITERS = ['\n\n', '\n', '. ', ' '];
 
 /**
  * Truncate text to at most `maxTokens` tokens. Uses binary search on the

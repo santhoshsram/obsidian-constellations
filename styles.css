@@ -1,8 +1,45 @@
 /*
-
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
-
-If your plugin does not need CSS, delete this file.
-
+  Obsidian Brain styles
 */
+
+.brain-indexing-progress {
+	margin: 0 0 18px 0;
+	padding: 10px 14px;
+	background-color: var(--background-secondary);
+	border-radius: 6px;
+	border: 1px solid var(--background-modifier-border);
+}
+
+.brain-progress-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 6px;
+}
+
+.brain-progress-count {
+	font-weight: 500;
+	font-size: 0.9em;
+	white-space: nowrap;
+	min-width: 80px;
+}
+
+.brain-progress-bar {
+	flex: 1;
+	height: 10px;
+}
+
+.brain-progress-file {
+	font-size: 0.82em;
+	color: var(--text-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.brain-progress-last-indexed {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	margin-top: 4px;
+}
+

@@ -8,7 +8,7 @@ import { Brain } from './brain';
 
 export default class ObsidianBrainPlugin extends Plugin {
 	settings!: ObsidianBrainSettings;
-	private brain!: Brain;
+	brain!: Brain;
 	private statusBarEl!: HTMLElement;
 
 	async onload() {
@@ -16,7 +16,7 @@ export default class ObsidianBrainPlugin extends Plugin {
 
 		this.brain = new Brain(this);
 		this.statusBarEl = this.addStatusBarItem();
-		this.setStatus('Brain: starting…');
+		this.setStatus('');
 
 		this.addSettingTab(new ObsidianBrainSettingTab(this.app, this));
 
@@ -24,7 +24,7 @@ export default class ObsidianBrainPlugin extends Plugin {
 			id: 'reindex-vault',
 			name: 'Reindex vault',
 			callback: () => {
-				void this.brain.reindex();
+				void this.startBrain();
 			},
 		});
 
@@ -36,8 +36,17 @@ export default class ObsidianBrainPlugin extends Plugin {
 
 		// Defer model loading and indexing until the workspace is ready.
 		this.app.workspace.onLayoutReady(() => {
-			void this.brain.init();
+			void this.startBrain();
 		});
+	}
+
+	/** Start model load + sync or reindex if already running. */
+	async startBrain(): Promise<void> {
+		if (!this.brain.started) {
+			await this.brain.init();
+		} else if (!this.brain.progress.isIndexing) {
+			await this.brain.reindex();
+		}
 	}
 
 	onunload() {
@@ -46,6 +55,11 @@ export default class ObsidianBrainPlugin extends Plugin {
 
 	setStatus(text: string) {
 		this.statusBarEl?.setText(text);
+	}
+
+	/** Recreate the console logger when the debug-logging setting changes. */
+	refreshLogger() {
+		this.brain.refreshLogger();
 	}
 
 	private showRelatedNotes() {

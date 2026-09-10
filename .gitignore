@@ -17,6 +17,11 @@ main.js
 
 # obsidian
 data.json
+brain.log
+*.log
+vectors.bin
+chunks.json
+state.json
 
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store

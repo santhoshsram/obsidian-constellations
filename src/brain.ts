@@ -20,9 +20,20 @@ import { HeuristicTokenCounter } from './chunking/tokens';
 import { relatedToNote } from './search/retrieval';
 import type { RelatedNote } from './search/related';
 import { debounce } from './utils/debounce';
+import { ConsoleLogger } from './utils/logger';
+import { BufferedLogFile } from './utils/file-log';
 
 const REINDEX_DEBOUNCE_MS = 2000;
 const SAVE_DEBOUNCE_MS = 5000;
+const LOG_FLUSH_MS = 2000;
+
+export interface BrainProgress {
+	isIndexing: boolean;
+	done: number;
+	total: number;
+	currentFile: string;
+	lastIndexedAt: number | null;
+}
 
 export class Brain {
 	private index: ChunkIndex | null = null;
@@ -30,8 +41,44 @@ export class Brain {
 	private embedder: Embedder | null = null;
 	private storage: ObsidianIndexStorage | null = null;
 	private ready = false;
+	private logger = new ConsoleLogger('obsidian-brain', {
+		enabled: this.plugin.settings?.debugLogging ?? false,
+	});
+	private logFile: BufferedLogFile | null = null;
+
+	progress: BrainProgress = {
+		isIndexing: false,
+		done: 0,
+		total: 0,
+		currentFile: '',
+		lastIndexedAt: this.plugin.settings?.lastIndexedAt ?? null,
+	};
+	private onProgressListeners: Array<(progress: BrainProgress) => void> = [];
 
 	constructor(private plugin: ObsidianBrainPlugin) {}
+
+	/** Subscribe to live indexing progress updates. Returns unsubscribe function. */
+	onProgress(listener: (progress: BrainProgress) => void): () => void {
+		this.onProgressListeners.push(listener);
+		listener(this.progress);
+		return () => {
+			this.onProgressListeners = this.onProgressListeners.filter(
+				(l) => l !== listener,
+			);
+		};
+	}
+
+	private updateProgress(p: Partial<BrainProgress>): void {
+		this.progress = { ...this.progress, ...p };
+		for (const listener of this.onProgressListeners) {
+			listener(this.progress);
+		}
+	}
+
+	/** Recreate the logger when the debug-logging setting changes. */
+	refreshLogger(): void {
+		this.logger.enabled = this.plugin.settings.debugLogging;
+	}
 
 	/** True once the model is loaded and the initial sync has completed. */
 	get isReady(): boolean {
@@ -39,12 +86,22 @@ export class Brain {
 	}
 
 	/** Load the model and index, then sync the vault. */
+	/** True once init() has been started (prevents double-starts). */
+	get started(): boolean {
+		return this.initStarted;
+	}
+	private initStarted = false;
+
 	async init(): Promise<void> {
+		if (this.initStarted) {
+			return;
+		}
+		this.initStarted = true;
+		this.updateProgress({ isIndexing: true, currentFile: 'Initializing...' });
+		const pluginDir = await this.ensureLogFile();
 		const model = this.currentModel();
-		const pluginDir =
-			this.plugin.manifest.dir ??
-			`${this.plugin.app.vault.configDir}/plugins/${this.plugin.manifest.id}`;
 		this.storage = new ObsidianIndexStorage(this.plugin.app, pluginDir);
+		this.logger.info(`using model ${model.modelId}`);
 		const vault = new ObsidianVaultSource(this.plugin.app);
 
 		// Load a persisted index; a model switch forces a full rebuild.
@@ -56,7 +113,7 @@ export class Brain {
 				state = loaded.state;
 			}
 		} catch (e) {
-			console.warn('Obsidian Brain: failed to load index, rebuilding', e);
+			this.logger.warn('failed to load index, rebuilding', { kind: 'load' }, e);
 		}
 		if (!this.index) {
 			this.index = new ChunkIndex(
@@ -64,19 +121,30 @@ export class Brain {
 			);
 		}
 
-		new Notice(
-			'Obsidian brain: loading embedding model (downloaded once, then cached locally)…',
-		);
 		let pipe;
 		try {
-			pipe = await createEmbeddingPipeline(model.modelId, (p) => {
+			this.logger.info(`creating pipeline for model ${model.modelId}`);
+			const created = await createEmbeddingPipeline(model, (p) => {
 				if (p.status === 'progress' && p.file) {
-					this.plugin.setStatus(
-						`Brain: downloading model ${Math.round(p.progress ?? 0)}%`,
-					);
+					const pct = Math.round(p.progress ?? 0);
+					this.plugin.setStatus(`Brain: downloading model ${pct}%`);
+					this.updateProgress({
+						isIndexing: true,
+						done: pct,
+						total: 100,
+						currentFile: `Downloading ${p.file} (${pct}%)`,
+					});
 				}
 			});
+			pipe = created.pipe;
+			this.logger.info(
+				`embedding pipeline ready on device=${created.device}`,
+			);
 		} catch (e) {
+			this.updateProgress({
+				isIndexing: false,
+				currentFile: 'Model load failed',
+			});
 			this.plugin.setStatus('Brain: model failed to load');
 			new Notice(
 				'Obsidian brain: embedding model failed to load. Check the console (Cmd-Option-I) for details.',
@@ -92,6 +160,7 @@ export class Brain {
 			this.embedder,
 			new HeuristicTokenCounter(),
 			model,
+			this.logger,
 		);
 		if (state) {
 			this.service.setState(state);
@@ -99,11 +168,21 @@ export class Brain {
 
 		let result;
 		try {
-			result = await this.service.syncVault(vault, (done, total) => {
-				this.plugin.setStatus(`Brain: indexing ${done}/${total}`);
+			result = await this.service.syncVault(vault, (done, total, path) => {
+				this.plugin.setStatus(`Brain: indexing (${done}/${total})…`);
+				this.updateProgress({
+					isIndexing: true,
+					done,
+					total,
+					currentFile: path,
+				});
 			});
 			await this.persist();
 		} catch (e) {
+			this.updateProgress({
+				isIndexing: false,
+				currentFile: 'Indexing failed',
+			});
 			this.plugin.setStatus('Brain: indexing failed');
 			new Notice(
 				'Obsidian brain: indexing failed. Check the console (Cmd-Option-I) for details.',
@@ -113,18 +192,27 @@ export class Brain {
 			return;
 		}
 		this.ready = true;
-		this.plugin.setStatus(
-			`Brain: ${this.index.size} chunks indexed (${result.indexed} new, ${result.skipped} unchanged)`,
+		this.recordIndexCompletion(
+			`${result.total} files indexed (${this.index.size} chunks)`,
+			result.total,
+			result.total,
 		);
+		this.plugin.setStatus('');
 
 		this.registerFileEvents(vault);
 	}
 
 	/** Full rebuild: drop the index and re-embed everything. */
 	async reindex(): Promise<void> {
-		if (!this.embedder) {
+		if (!this.embedder || this.progress.isIndexing) {
 			return;
 		}
+		this.updateProgress({
+			isIndexing: true,
+			done: 0,
+			total: 0,
+			currentFile: 'Starting reindex...',
+		});
 		const model = this.currentModel();
 		this.index = new ChunkIndex(
 			new BruteForceVectorStore(model.dimensions),
@@ -134,14 +222,35 @@ export class Brain {
 			this.embedder,
 			new HeuristicTokenCounter(),
 			model,
+			this.logger,
 		);
-		new Notice('Obsidian brain: re-indexing vault…');
 		const vault = new ObsidianVaultSource(this.plugin.app);
-		await this.service.syncVault(vault, (done, total) => {
-			this.plugin.setStatus(`Brain: indexing ${done}/${total}`);
-		});
-		await this.persist();
-		this.plugin.setStatus(`Brain: ${this.index.size} chunks indexed`);
+		try {
+			const result = await this.service.syncVault(vault, (done, total, path) => {
+				this.plugin.setStatus(`Brain: indexing (${done}/${total})…`);
+				this.updateProgress({
+					isIndexing: true,
+					done,
+					total,
+					currentFile: path,
+				});
+			});
+			await this.persist();
+			this.ready = true;
+			this.recordIndexCompletion(
+				`${result.total} files indexed (${this.index.size} chunks)`,
+				result.total,
+				result.total,
+			);
+			this.plugin.setStatus('');
+		} catch (e) {
+			this.updateProgress({
+				isIndexing: false,
+				currentFile: 'Reindexing failed',
+			});
+			this.plugin.setStatus('Brain: reindexing failed');
+			console.error('Obsidian brain: reindex failed', e);
+		}
 	}
 
 	/** Notes related to the given (usually active) note. */
@@ -158,7 +267,64 @@ export class Brain {
 
 	/** Persist on unload (best effort). */
 	async shutdown(): Promise<void> {
+		await this.flushLog();
 		await this.persist();
+	}
+
+	/**
+	 * Point the logger at `brain.log` in the plugin dir so log lines are
+	 * written to disk for greppability, in addition to the console.
+	 * Awaits loading existing lines before attaching the sink so ordering
+	 * is preserved (existing lines, then new log lines).
+	 */
+	private async initLogFile(pluginDir: string): Promise<void> {
+		try {
+			const adapter = this.plugin.app.vault.adapter;
+			const path = `${pluginDir}/brain.log`;
+			const logFile = new BufferedLogFile(
+				{
+					read: async () =>
+						(await adapter.exists(path)) ? adapter.read(path) : null,
+					write: async (content: string) => {
+						if (!(await adapter.exists(pluginDir))) {
+							await adapter.mkdir(pluginDir);
+						}
+						await adapter.write(path, content);
+					},
+				},
+				LOG_FLUSH_MS,
+			);
+			this.logFile = logFile;
+			await logFile.init();
+			this.logger.setSink((line) => logFile.append(line));
+			this.logFile = logFile;
+			this.logger.info('log file sink attached at ' + path);
+		} catch (e) {
+			// File logging is best-effort; console logging still works.
+			this.logger.info('log file sink failed to attach');
+			console.warn('Obsidian brain: brain.log unavailable', e);
+		}
+	}
+
+	/**
+	 * Idempotent: resolves the plugin dir, attaches the log file sink if
+	 * not already attached, and returns pluginDir for callers that need it
+	 * (e.g. to set up storage). Safe to call from benchmark or init.
+	 */
+	private async ensureLogFile(): Promise<string> {
+		const pluginDir =
+			this.plugin.manifest.dir ??
+			`${this.plugin.app.vault.configDir}/plugins/${this.plugin.manifest.id}`;
+		if (!this.logFile) {
+			await this.initLogFile(pluginDir);
+		}
+		return pluginDir;
+	}
+
+	private async flushLog(): Promise<void> {
+		if (this.logFile) {
+			await this.logFile.flush();
+		}
 	}
 
 	private currentModel() {
@@ -166,6 +332,23 @@ export class Brain {
 			EMBEDDING_MODELS[this.plugin.settings.embeddingModel] ??
 			DEFAULT_MODEL
 		);
+	}
+
+	private recordIndexCompletion(
+		currentFile: string,
+		done?: number,
+		total?: number,
+	): void {
+		const now = Date.now();
+		this.plugin.settings.lastIndexedAt = now;
+		void this.plugin.saveSettings();
+		this.updateProgress({
+			isIndexing: false,
+			lastIndexedAt: now,
+			currentFile,
+			...(done !== undefined ? { done } : {}),
+			...(total !== undefined ? { total } : {}),
+		});
 	}
 
 	private registerFileEvents(vault: ObsidianVaultSource): void {
@@ -178,25 +361,36 @@ export class Brain {
 		}, REINDEX_DEBOUNCE_MS);
 
 		this.plugin.registerEvent(
-			this.plugin.app.vault.on('modify', (file) =>
-				reindexFile(file.path),
-			),
+			this.plugin.app.vault.on('modify', (file) => {
+				if (file.path.endsWith('.md')) {
+					reindexFile(file.path);
+				}
+			}),
 		);
 		this.plugin.registerEvent(
-			this.plugin.app.vault.on('create', (file) =>
-				reindexFile(file.path),
-			),
+			this.plugin.app.vault.on('create', (file) => {
+				if (file.path.endsWith('.md')) {
+					reindexFile(file.path);
+				}
+			}),
 		);
 		this.plugin.registerEvent(
 			this.plugin.app.vault.on('delete', (file) => {
-				this.service?.removeFile(file.path);
-				scheduleSave();
+				if (file.path.endsWith('.md')) {
+					this.service?.removeFile(file.path);
+					this.recordIndexCompletion(`Removed ${file.path}`);
+					scheduleSave();
+				}
 			}),
 		);
 		this.plugin.registerEvent(
 			this.plugin.app.vault.on('rename', (file, oldPath) => {
-				this.service?.removeFile(oldPath);
-				reindexFile(file.path);
+				if (oldPath.endsWith('.md')) {
+					this.service?.removeFile(oldPath);
+				}
+				if (file.path.endsWith('.md')) {
+					reindexFile(file.path);
+				}
 			}),
 		);
 	}
@@ -209,8 +403,21 @@ export class Brain {
 			return;
 		}
 		try {
-			await this.service.indexFile(path, await vault.read(path));
+			this.updateProgress({
+				isIndexing: true,
+				currentFile: `Indexing ${path}…`,
+			});
+			this.plugin.setStatus('Brain: indexing…');
+			const content = await vault.read(path);
+			await this.service.indexFile(path, content);
+			this.recordIndexCompletion(`Updated ${path}`);
+			this.plugin.setStatus('');
 		} catch (e) {
+			this.updateProgress({
+				isIndexing: false,
+				currentFile: `Failed to index ${path}`,
+			});
+			this.plugin.setStatus('');
 			console.warn(`Obsidian brain: failed to index ${path}`, e);
 		}
 	}
