@@ -1,10 +1,31 @@
-import { Notice, Plugin } from 'obsidian';
+import { MarkdownView, Notice, Plugin, TFile } from 'obsidian';
 import {
 	DEFAULT_SETTINGS,
 	ObsidianBrainSettings,
 	ObsidianBrainSettingTab,
 } from './settings';
 import { Brain } from './brain';
+import type { RetrievalStrategy } from './search/retrieval';
+
+function getActiveHeadingAtCursor(
+	plugin: ObsidianBrainPlugin,
+	file: TFile,
+	cursorLine: number,
+): string | undefined {
+	const cache = plugin.app.metadataCache.getFileCache(file);
+	if (!cache?.headings || cache.headings.length === 0) {
+		return undefined;
+	}
+	let activeHeading: string | undefined;
+	for (const h of cache.headings) {
+		if (h.position.start.line <= cursorLine) {
+			activeHeading = h.heading;
+		} else {
+			break;
+		}
+	}
+	return activeHeading;
+}
 
 export default class ObsidianBrainPlugin extends Plugin {
 	settings!: ObsidianBrainSettings;
@@ -21,8 +42,8 @@ export default class ObsidianBrainPlugin extends Plugin {
 		this.addSettingTab(new ObsidianBrainSettingTab(this.app, this));
 
 		this.addCommand({
-			id: 'reindex-vault',
-			name: 'Reindex vault',
+			id: 'reindex-notes',
+			name: 'Reindex notes',
 			callback: () => {
 				void this.startBrain();
 			},
@@ -32,6 +53,24 @@ export default class ObsidianBrainPlugin extends Plugin {
 			id: 'find-related-notes',
 			name: 'Find notes related to the current note',
 			callback: () => this.showRelatedNotes(),
+		});
+
+		this.addCommand({
+			id: 'find-related-notes-maxsim',
+			name: 'Find related notes (detailed)',
+			callback: () => this.showRelatedNotes('maxsim'),
+		});
+
+		this.addCommand({
+			id: 'find-related-notes-cursor',
+			name: 'Find related notes (focused)',
+			callback: () => this.showRelatedNotes('cursor'),
+		});
+
+		this.addCommand({
+			id: 'find-related-notes-mean',
+			name: 'Find related notes (broad)',
+			callback: () => this.showRelatedNotes('mean'),
 		});
 
 		// Defer model loading and indexing until the workspace is ready.
@@ -62,7 +101,7 @@ export default class ObsidianBrainPlugin extends Plugin {
 		this.brain.refreshLogger();
 	}
 
-	private showRelatedNotes() {
+	private showRelatedNotes(strategyOverride?: RetrievalStrategy) {
 		if (!this.brain.isReady) {
 			new Notice('Obsidian brain is still indexing — try again shortly.');
 			return;
@@ -72,18 +111,54 @@ export default class ObsidianBrainPlugin extends Plugin {
 			new Notice('No active note.');
 			return;
 		}
-		const related = this.brain.relatedTo(file.path);
+
+		const strategy = strategyOverride ?? this.settings.retrievalStrategy;
+		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const cursorLine = activeView?.editor?.getCursor()?.line;
+		const cursorHeading =
+			typeof cursorLine === 'number'
+				? getActiveHeadingAtCursor(this, file, cursorLine)
+				: undefined;
+
+		const related = this.brain.relatedTo(file.path, {
+			strategy,
+			cursorLine,
+			cursorHeading,
+		});
+
 		if (related.length === 0) {
 			new Notice('No related notes found.');
 			return;
 		}
-		// Headless validation for Phase 1: top results in a Notice.
+
+		const strategyLabels: Record<RetrievalStrategy, string> = {
+			maxsim: 'Detailed',
+			cursor: 'Focused',
+			mean: 'Broad',
+		};
+		const label = strategyLabels[strategy] ?? strategy;
+
+		// Headless validation for Phase 1: top results in a persistent Notice.
 		// (The Phase 2 sidebar UI replaces this.)
 		const lines = related
 			.slice(0, 5)
-			.map((n) => `${n.bestScore.toFixed(2)}  ${n.filePath}`)
+			.map((n, i) => {
+				const score = n.bestScore.toFixed(2);
+				const sourceHeading = n.matchedSourceHeading
+					? ` [matched: ${n.matchedSourceHeading}]`
+					: '';
+				const topChunk = n.chunks[0];
+				const targetHeading =
+					topChunk && topChunk.record.headingPath.length > 1
+						? `\n   ↳ section: "${topChunk.record.headingPath[topChunk.record.headingPath.length - 1]}"`
+						: '';
+				return `${i + 1}. ${score}  ${n.filePath}${sourceHeading}${targetHeading}`;
+			})
 			.join('\n');
-		new Notice(`Obsidian brain — related notes:\n${lines}`, 15000);
+		new Notice(
+			`Obsidian brain — related notes (${label}):\n${lines}\n\n(Click to dismiss)`,
+			0,
+		);
 	}
 
 	async loadSettings() {

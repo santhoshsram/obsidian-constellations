@@ -10,6 +10,10 @@ describe('settings', () => {
 		expect(DEFAULT_SETTINGS.debugLogging).toBe(false);
 	});
 
+	it('defaults retrievalStrategy to maxsim', () => {
+		expect(DEFAULT_SETTINGS.retrievalStrategy).toBe('maxsim');
+	});
+
 	it('formats null or undefined timestamp as Never', () => {
 		expect(formatLastIndexed(null)).toBe('Never');
 		expect(formatLastIndexed(undefined)).toBe('Never');

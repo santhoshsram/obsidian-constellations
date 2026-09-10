@@ -17,6 +17,8 @@ export interface NewChunk {
 	headingPath: string[];
 	titleContext: string;
 	text: string;
+	startLine?: number;
+	endLine?: number;
 }
 
 /** A chunk stored in the index. */
@@ -30,6 +32,7 @@ export interface ChunkRecord extends NewChunk {
 export interface ScoredChunk {
 	record: ChunkRecord;
 	score: number;
+	matchedSourceHeading?: string;
 }
 
 /** Embeds a batch of texts, returning one vector per text. */
@@ -148,6 +151,26 @@ export class ChunkIndex {
 			}
 		}
 		return vectors;
+	}
+
+	/** Active chunk records paired with their vectors for a file. */
+	chunksWithVectorsForFile(
+		filePath: string,
+	): Array<{ record: ChunkRecord; vector: Float32Array }> {
+		const rows = this.rowsByFile.get(filePath);
+		if (!rows) {
+			return [];
+		}
+		const result: Array<{ record: ChunkRecord; vector: Float32Array }> = [];
+		const sortedRows = [...rows].sort((a, b) => a - b);
+		for (const row of sortedRows) {
+			const record = this.records[row];
+			const vector = this.store.get(row);
+			if (record && vector) {
+				result.push({ record, vector });
+			}
+		}
+		return result;
 	}
 
 	/** Cosine-search the store and attach chunk records. */

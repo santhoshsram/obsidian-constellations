@@ -1,10 +1,13 @@
 import { App, ButtonComponent, PluginSettingTab, Setting } from 'obsidian';
 import type ObsidianBrainPlugin from './main';
 import { EMBEDDING_MODELS, DEFAULT_MODEL } from './embed/models';
+import type { RetrievalStrategy } from './search/retrieval';
 
 export interface ObsidianBrainSettings {
 	/** Hugging Face model ID used for embeddings. */
 	embeddingModel: string;
+	/** Default retrieval strategy for related notes. */
+	retrievalStrategy: RetrievalStrategy;
 	/** Max related notes shown for the active note. */
 	maxRelatedNotes: number;
 	/** Max matching chunks shown per related note. */
@@ -19,6 +22,7 @@ export interface ObsidianBrainSettings {
 
 export const DEFAULT_SETTINGS: ObsidianBrainSettings = {
 	embeddingModel: DEFAULT_MODEL.modelId,
+	retrievalStrategy: 'maxsim',
 	maxRelatedNotes: 10,
 	maxChunksPerNote: 3,
 	minScore: 0.45,
@@ -193,6 +197,43 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 					.setValue(selected)
 					.onChange(async (value) => {
 						this.plugin.settings.embeddingModel = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		const strategyDesc = createFragment((el) => {
+			el.createDiv({
+				text: 'Choose how Obsidian Brain finds related notes:',
+			});
+			const list = el.createEl('ul');
+			const li1 = list.createEl('li');
+			li1.createEl('strong', { text: 'Detailed: ' });
+			li1.appendText(
+				'Retrieves best matches for each section in the note and then picks the top matches across these.',
+			);
+			const li2 = list.createEl('li');
+			li2.createEl('strong', { text: 'Focused: ' });
+			li2.appendText(
+				'Retrieves the best matches for the section or paragraph under your cursor.',
+			);
+			const li3 = list.createEl('li');
+			li3.createEl('strong', { text: 'Broad: ' });
+			li3.appendText(
+				'Retrieves the best matches using an overall summary of the full note.',
+			);
+		});
+
+		new Setting(containerEl)
+			.setName('Matching mode')
+			.setDesc(strategyDesc)
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOption('maxsim', 'Detailed (recommended)')
+					.addOption('cursor', 'Focused (around cursor)')
+					.addOption('mean', 'Broad (whole note)')
+					.setValue(this.plugin.settings.retrievalStrategy ?? 'maxsim')
+					.onChange(async (value) => {
+						this.plugin.settings.retrievalStrategy = value as RetrievalStrategy;
 						await this.plugin.saveSettings();
 					});
 			});

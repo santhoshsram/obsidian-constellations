@@ -17,7 +17,10 @@ import type { Embedder } from './embed/embedder';
 import { createEmbeddingPipeline } from './embed/pipeline';
 import { EMBEDDING_MODELS, DEFAULT_MODEL } from './embed/models';
 import { HeuristicTokenCounter } from './chunking/tokens';
-import { relatedToNote } from './search/retrieval';
+import {
+	relatedToNoteWithStrategy,
+	type RetrievalStrategy,
+} from './search/retrieval';
 import type { RelatedNote } from './search/related';
 import { debounce } from './utils/debounce';
 import { ConsoleLogger } from './utils/logger';
@@ -265,11 +268,23 @@ export class Brain {
 	}
 
 	/** Notes related to the given (usually active) note. */
-	relatedTo(filePath: string): RelatedNote[] {
+	relatedTo(
+		filePath: string,
+		options?: {
+			strategy?: RetrievalStrategy;
+			cursorLine?: number;
+			cursorHeading?: string;
+			chunkIndex?: number;
+		},
+	): RelatedNote[] {
 		if (!this.ready || !this.index) {
 			return [];
 		}
-		return relatedToNote(this.index, filePath, {
+		return relatedToNoteWithStrategy(this.index, filePath, {
+			strategy: options?.strategy ?? this.plugin.settings.retrievalStrategy,
+			cursorLine: options?.cursorLine,
+			cursorHeading: options?.cursorHeading,
+			chunkIndex: options?.chunkIndex,
 			maxNotes: this.plugin.settings.maxRelatedNotes,
 			maxChunksPerNote: this.plugin.settings.maxChunksPerNote,
 			minScore: this.plugin.settings.minScore,

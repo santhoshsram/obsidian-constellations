@@ -4,7 +4,7 @@
  * already computed at index time — no model call needed.
  */
 
-import type { ChunkIndex } from '../index/chunk-index';
+import type { ChunkIndex, ScoredChunk } from '../index/chunk-index';
 import { relatedNotes } from './related';
 import type { RelatedNote } from './related';
 
@@ -12,6 +12,26 @@ export interface RetrievalOptions {
 	maxNotes: number;
 	maxChunksPerNote: number;
 	minScore: number;
+}
+
+export type RetrievalStrategy = 'maxsim' | 'cursor' | 'mean';
+
+export interface CursorRetrievalOptions extends RetrievalOptions {
+	cursorLine?: number;
+	cursorHeading?: string;
+	chunkIndex?: number;
+}
+
+export interface StrategyRetrievalOptions extends CursorRetrievalOptions {
+	strategy?: RetrievalStrategy;
+}
+
+/** Extract the most specific heading for attribution display. */
+export function chunkSourceHeading(chunk: { headingPath: string[]; titleContext: string }): string {
+	if (chunk.headingPath && chunk.headingPath.length > 1) {
+		return chunk.headingPath[chunk.headingPath.length - 1] ?? chunk.titleContext;
+	}
+	return chunk.headingPath?.[0] ?? chunk.titleContext;
 }
 
 /** Component-wise mean of a set of equal-length vectors. */
@@ -32,9 +52,8 @@ export function meanVector(vectors: Float32Array[]): Float32Array {
 }
 
 /**
- * Find the notes most related to `filePath`. The note is represented by
- * the mean of its chunk vectors; results exclude the note itself and are
- * grouped to at most `maxChunksPerNote` chunks per related note.
+ * Baseline: Find the notes most related to `filePath` by averaging its
+ * chunk vectors into a single query vector.
  */
 export function relatedToNote(
 	index: ChunkIndex,
@@ -58,4 +77,148 @@ export function relatedToNote(
 		maxNotes: options.maxNotes,
 		maxChunksPerNote: options.maxChunksPerNote,
 	});
+}
+
+/**
+ * Chunk-to-Chunk MaxSim (All-Pairs Matching):
+ * Evaluates every chunk of the active note individually against vault chunks.
+ * Prevents topic dilution in multi-topic notes and attributes which section
+ * triggered each related note match.
+ */
+export function relatedToNoteMaxSim(
+	index: ChunkIndex,
+	filePath: string,
+	options: RetrievalOptions,
+): RelatedNote[] {
+	const sourceChunks = index.chunksWithVectorsForFile(filePath);
+	if (sourceChunks.length === 0) {
+		return [];
+	}
+
+	const topK = Math.max(
+		50,
+		options.maxNotes * options.maxChunksPerNote * 5,
+	);
+
+	const allScored: ScoredChunk[] = [];
+	for (const { record, vector } of sourceChunks) {
+		const heading = chunkSourceHeading(record);
+		const scored = index.search(vector, topK, options.minScore);
+		for (const s of scored) {
+			if (s.record.filePath !== filePath) {
+				allScored.push({
+					...s,
+					matchedSourceHeading: heading,
+				});
+			}
+		}
+	}
+
+	return relatedNotes(allScored, {
+		excludeFile: filePath,
+		maxNotes: options.maxNotes,
+		maxChunksPerNote: options.maxChunksPerNote,
+	});
+}
+
+/**
+ * Cursor / Active Section Matching:
+ * Retrieves notes relevant to the specific section the user is currently
+ * reading or editing under their cursor.
+ */
+export function relatedToNoteCursor(
+	index: ChunkIndex,
+	filePath: string,
+	options: CursorRetrievalOptions,
+): RelatedNote[] {
+	const sourceChunks = index.chunksWithVectorsForFile(filePath);
+	if (sourceChunks.length === 0) {
+		return [];
+	}
+
+	let targetChunks: Array<{ record: typeof sourceChunks[0]['record']; vector: Float32Array }> = [];
+
+	// 1. Direct chunkIndex if specified
+	if (typeof options.chunkIndex === 'number') {
+		const c = sourceChunks[options.chunkIndex];
+		if (c) {
+			targetChunks = [c];
+		}
+	}
+
+	// 2. Heading match
+	if (targetChunks.length === 0 && options.cursorHeading) {
+		const normalized = options.cursorHeading.trim().toLowerCase();
+		targetChunks = sourceChunks.filter((c) =>
+			c.record.headingPath.some((h) => h.trim().toLowerCase() === normalized),
+		);
+	}
+
+	// 3. Line range match
+	if (targetChunks.length === 0 && typeof options.cursorLine === 'number') {
+		const line = options.cursorLine;
+		const match = sourceChunks.find(
+			(c) =>
+				typeof c.record.startLine === 'number' &&
+				typeof c.record.endLine === 'number' &&
+				c.record.startLine <= line &&
+				line <= c.record.endLine,
+		);
+		if (match) {
+			targetChunks = [match];
+		}
+	}
+
+	// 4. Fallback to first chunk (the note's lead/overview section)
+	if (targetChunks.length === 0) {
+		const first = sourceChunks[0];
+		if (first) {
+			targetChunks = [first];
+		}
+	}
+
+	const topK = Math.max(
+		50,
+		options.maxNotes * options.maxChunksPerNote * 5,
+	);
+
+	const allScored: ScoredChunk[] = [];
+	for (const { record, vector } of targetChunks) {
+		const heading = chunkSourceHeading(record);
+		const scored = index.search(vector, topK, options.minScore);
+		for (const s of scored) {
+			if (s.record.filePath !== filePath) {
+				allScored.push({
+					...s,
+					matchedSourceHeading: heading,
+				});
+			}
+		}
+	}
+
+	return relatedNotes(allScored, {
+		excludeFile: filePath,
+		maxNotes: options.maxNotes,
+		maxChunksPerNote: options.maxChunksPerNote,
+	});
+}
+
+/**
+ * Route retrieval based on configured or requested strategy.
+ */
+export function relatedToNoteWithStrategy(
+	index: ChunkIndex,
+	filePath: string,
+	options: StrategyRetrievalOptions,
+): RelatedNote[] {
+	const strategy = options.strategy ?? 'maxsim';
+	switch (strategy) {
+		case 'maxsim':
+			return relatedToNoteMaxSim(index, filePath, options);
+		case 'cursor':
+			return relatedToNoteCursor(index, filePath, options);
+		case 'mean':
+		default:
+			return relatedToNote(index, filePath, options);
+	}
 }

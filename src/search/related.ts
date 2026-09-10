@@ -12,6 +12,8 @@ export interface RelatedNote {
 	bestScore: number;
 	/** Top-scoring chunks, best first, at most `maxChunksPerNote`. */
 	chunks: ScoredChunk[];
+	/** Heading in the source note that produced the strongest match. */
+	matchedSourceHeading?: string;
 }
 
 export interface RelatedOptions {
@@ -45,11 +47,24 @@ export function relatedNotes(
 
 	const notes: RelatedNote[] = [];
 	for (const [filePath, chunks] of byFile) {
-		chunks.sort((a, b) => b.score - a.score);
-		const top = chunks.slice(0, options.maxChunksPerNote);
+		const bestPerChunk = new Map<string, ScoredChunk>();
+		for (const chunk of chunks) {
+			const existing = bestPerChunk.get(chunk.record.id);
+			if (!existing || chunk.score > existing.score) {
+				bestPerChunk.set(chunk.record.id, chunk);
+			}
+		}
+		const uniqueChunks = [...bestPerChunk.values()];
+		uniqueChunks.sort((a, b) => b.score - a.score);
+		const top = uniqueChunks.slice(0, options.maxChunksPerNote);
 		const best = top[0];
 		if (best) {
-			notes.push({ filePath, bestScore: best.score, chunks: top });
+			notes.push({
+				filePath,
+				bestScore: best.score,
+				chunks: top,
+				matchedSourceHeading: best.matchedSourceHeading,
+			});
 		}
 	}
 	notes.sort((a, b) => b.bestScore - a.bestScore);
