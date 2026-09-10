@@ -67,13 +67,24 @@ export class Brain {
 		new Notice(
 			'Obsidian brain: loading embedding model (downloaded once, then cached locally)…',
 		);
-		const pipe = await createEmbeddingPipeline(model.modelId, (p) => {
-			if (p.status === 'progress' && p.file) {
-				this.plugin.setStatus(
-					`Brain: downloading model ${Math.round(p.progress ?? 0)}%`,
-				);
-			}
-		});
+		let pipe;
+		try {
+			pipe = await createEmbeddingPipeline(model.modelId, (p) => {
+				if (p.status === 'progress' && p.file) {
+					this.plugin.setStatus(
+						`Brain: downloading model ${Math.round(p.progress ?? 0)}%`,
+					);
+				}
+			});
+		} catch (e) {
+			this.plugin.setStatus('Brain: model failed to load');
+			new Notice(
+				'Obsidian brain: embedding model failed to load. Check the console (Cmd-Option-I) for details.',
+				0,
+			);
+			console.error('Obsidian brain: model load failed', e);
+			return;
+		}
 		this.embedder = new TransformersEmbedder(pipe, model);
 
 		this.service = new IndexingService(
@@ -86,10 +97,21 @@ export class Brain {
 			this.service.setState(state);
 		}
 
-		const result = await this.service.syncVault(vault, (done, total) => {
-			this.plugin.setStatus(`Brain: indexing ${done}/${total}`);
-		});
-		await this.persist();
+		let result;
+		try {
+			result = await this.service.syncVault(vault, (done, total) => {
+				this.plugin.setStatus(`Brain: indexing ${done}/${total}`);
+			});
+			await this.persist();
+		} catch (e) {
+			this.plugin.setStatus('Brain: indexing failed');
+			new Notice(
+				'Obsidian brain: indexing failed. Check the console (Cmd-Option-I) for details.',
+				0,
+			);
+			console.error('Obsidian brain: indexing failed', e);
+			return;
+		}
 		this.ready = true;
 		this.plugin.setStatus(
 			`Brain: ${this.index.size} chunks indexed (${result.indexed} new, ${result.skipped} unchanged)`,
