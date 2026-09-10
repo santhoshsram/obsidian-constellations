@@ -32,6 +32,7 @@ export interface ChunkRecord extends NewChunk {
 export interface ScoredChunk {
 	record: ChunkRecord;
 	score: number;
+	vectorScore?: number;
 	matchedSourceHeading?: string;
 	sourceChunk?: ChunkRecord;
 }

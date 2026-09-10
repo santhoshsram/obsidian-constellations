@@ -103,7 +103,15 @@ export default class ObsidianBrainPlugin extends Plugin {
 
 	private async showRelatedNotes(strategyOverride?: RetrievalStrategy): Promise<void> {
 		if (!this.brain.isReady) {
-			new Notice('Obsidian brain is still indexing — try again shortly.');
+			const embState = this.brain.embeddingStatus?.state;
+			const rerankState = this.brain.rerankerStatus?.state;
+			if (embState === 'downloading' || rerankState === 'downloading') {
+				new Notice('Obsidian brain is downloading models — try again shortly.');
+			} else if (embState === 'loading' || rerankState === 'loading') {
+				new Notice('Obsidian brain is loading models — try again shortly.');
+			} else {
+				new Notice('Obsidian brain is still indexing — try again shortly.');
+			}
 			return;
 		}
 		const file = this.app.workspace.getActiveFile();

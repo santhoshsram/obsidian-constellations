@@ -41,11 +41,11 @@ describe('buildFallbackChain', () => {
 	});
 
 	it('works with RerankerModelSpec', async () => {
-		const { ETTIN_RERANKER_150M } = await import('../../src/embed/models');
-		const chain = buildFallbackChain(ETTIN_RERANKER_150M, true);
+		const { GTE_RERANKER_MODERNBERT_BASE } = await import('../../src/embed/models');
+		const chain = buildFallbackChain(GTE_RERANKER_MODERNBERT_BASE, true);
 		expect(chain).toEqual([
-			{ device: 'webgpu', dtype: 'fp16' },
-			{ device: 'webgpu', dtype: 'fp32' },
+			{ device: 'webgpu', dtype: 'q8' },
+			{ device: 'webgpu', dtype: 'q4' },
 			{ dtype: 'q8' },
 			{},
 		]);

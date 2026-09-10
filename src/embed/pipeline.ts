@@ -132,7 +132,7 @@ export async function createEmbeddingPipeline(
 	// Report WebGPU availability so we know whether WASM is a fallback or
 	// the only option (WASM single-thread is slow).
 	const gpuStatus = await probeWebgpu();
-	console.warn(`Obsidian brain: webgpu probe=${gpuStatus}`, gpuStatus);
+	console.debug(`Obsidian brain: embedding model webgpu probe=${gpuStatus}`);
 
 	const fallbacks = buildFallbackChain(model, gpuStatus === 'usable');
 	let lastError: unknown;
@@ -143,7 +143,7 @@ export async function createEmbeddingPipeline(
 				progress_callback: onProgress,
 			});
 			const device: DeviceMode = cfg.device === 'webgpu' ? 'webgpu' : 'wasm';
-			console.warn(`Obsidian brain: using device=${device}`);
+			console.debug(`Obsidian brain: embedding model using device=${device}`);
 			return { pipe, device };
 		} catch (e) {
 			console.warn(
@@ -164,7 +164,7 @@ export async function createRerankerPipeline(
 	const { AutoTokenizer, AutoModelForSequenceClassification } = transformers;
 
 	const gpuStatus = await probeWebgpu();
-	console.warn(`Obsidian brain: reranker webgpu probe=${gpuStatus}`, gpuStatus);
+	console.debug(`Obsidian brain: reranker webgpu probe=${gpuStatus}`);
 
 	const tokenizer = await AutoTokenizer.from_pretrained(model.modelId, {
 		progress_callback: onProgress,
@@ -182,25 +182,45 @@ export async function createRerankerPipeline(
 				},
 			);
 			const device: DeviceMode = cfg.device === 'webgpu' ? 'webgpu' : 'wasm';
-			console.warn(`Obsidian brain: reranker using device=${device}`);
+			console.debug(`Obsidian brain: reranker using device=${device}`);
 
-			const rerankPairs: RerankPairsFn = async (pairs: TextPair[]): Promise<number[]> => {
+			const rerankPairs: RerankPairsFn = async (
+				pairs: TextPair[],
+				onTiming?: (timing: { tokenizeMs: number; inferMs: number }) => void,
+			): Promise<number[]> => {
 				if (pairs.length === 0) return [];
-				const queries = pairs.map((p) => p.query);
-				const passages = pairs.map((p) => p.passage);
-				const inputs = (tokenizer as (texts: string[], options: Record<string, unknown>) => unknown)(queries, {
-					text_pair: passages,
-					padding: true,
-					truncation: true,
-					max_length: model.maxLength,
-				});
-				const outputs = (await (classifier as (inp: unknown) => Promise<{ logits: { data: ArrayLike<number> } }>)(inputs));
-				const data = outputs.logits.data;
-				const scores: number[] = [];
-				for (let i = 0; i < pairs.length; i++) {
-					scores.push(Number(data[i] ?? 0));
+				try {
+					const tTokenizeStart = performance.now();
+					const queries = pairs.map((p) => p.query);
+					const passages = pairs.map((p) => p.passage);
+					const inputs = (tokenizer as (texts: string[], options: Record<string, unknown>) => unknown)(queries, {
+						text_pair: passages,
+						padding: true,
+						truncation: true,
+						max_length: model.maxLength,
+					});
+					const tokenizeMs = performance.now() - tTokenizeStart;
+
+					const tInferStart = performance.now();
+					const outputs = (await (classifier as (inp: unknown) => Promise<{ logits?: { data: ArrayLike<number> } }>)(inputs));
+					const inferMs = performance.now() - tInferStart;
+
+					console.debug('Obsidian brain: reranker outputs keys:', outputs ? Object.keys(outputs) : null);
+
+					onTiming?.({ tokenizeMs, inferMs });
+
+					const rawScores = await extractLogitsAsync(outputs?.logits);
+					const scores: number[] = [];
+					const isTwoClass = rawScores.length === pairs.length * 2;
+					for (let i = 0; i < pairs.length; i++) {
+						const idx = isTwoClass ? i * 2 + 1 : i;
+						scores.push(Number(rawScores[idx] ?? 0));
+					}
+					return scores;
+				} catch (err) {
+					console.error('Obsidian brain: rerankPairs execution failed', err);
+					throw err;
 				}
-				return scores;
 			};
 
 			return { rerankPairs, device };
@@ -228,4 +248,114 @@ async function probeWebgpu(): Promise<'usable' | 'missing' | 'failed'> {
 		return 'failed';
 	}
 }
+
+/** Check whether model weights exist in Chromium CacheStorage ('transformers-cache'). */
+export async function isModelCached(modelId: string): Promise<boolean> {
+	if (typeof caches === 'undefined') {
+		return false;
+	}
+	try {
+		const cache = await caches.open('transformers-cache');
+		const keys = await cache.keys();
+		return keys.some((req) => req.url.includes(modelId));
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Extract an ArrayLike of numbers from model logits, handling ONNX WebGPU tensors,
+ * CPU tensors, direct TypedArrays, and nested lists.
+ */
+export async function extractLogitsAsync(logits: unknown): Promise<ArrayLike<number>> {
+	if (!logits) {
+		console.error('Obsidian brain: extractLogitsAsync received falsy logits:', logits);
+		throw new Error('Model outputs missing logits');
+	}
+
+	// 1. Direct array or TypedArray
+	if (Array.isArray(logits) || ArrayBuffer.isView(logits)) {
+		return logits as ArrayLike<number>;
+	}
+
+	const obj = logits as Record<string, unknown>;
+
+	// 2. If it has getData() (ONNX WebGPU tensor needing download to CPU)
+	if (typeof obj.getData === 'function') {
+		try {
+			const gpuData = await (obj.getData as () => Promise<unknown>)();
+			if (Array.isArray(gpuData) || ArrayBuffer.isView(gpuData)) {
+				return gpuData as ArrayLike<number>;
+			}
+		} catch (e) {
+			console.warn('logits.getData() threw:', e);
+		}
+	}
+
+	// 3. If ort_tensor has getData()
+	if (
+		obj.ort_tensor &&
+		typeof (obj.ort_tensor as Record<string, unknown>).getData === 'function'
+	) {
+		try {
+			const gpuData = await (
+				(obj.ort_tensor as Record<string, unknown>).getData as () => Promise<unknown>
+			)();
+			if (Array.isArray(gpuData) || ArrayBuffer.isView(gpuData)) {
+				return gpuData as ArrayLike<number>;
+			}
+		} catch (e) {
+			console.warn('ort_tensor.getData() threw:', e);
+		}
+	}
+
+	// 4. If it has .tolist()
+	if (typeof obj.tolist === 'function') {
+		try {
+			const list = (obj.tolist as () => unknown)();
+			if (Array.isArray(list)) {
+				return list.flat(Infinity) as ArrayLike<number>;
+			}
+		} catch (e) {
+			console.warn('logits.tolist() threw:', e);
+		}
+	}
+
+	// 5. Check .data property
+	try {
+		if (obj.data && (Array.isArray(obj.data) || ArrayBuffer.isView(obj.data))) {
+			return obj.data as ArrayLike<number>;
+		}
+	} catch (e) {
+		console.warn('Accessing logits.data threw:', e);
+	}
+
+	// 6. Check .cpuData property
+	if (obj.cpuData && (Array.isArray(obj.cpuData) || ArrayBuffer.isView(obj.cpuData))) {
+		return obj.cpuData as ArrayLike<number>;
+	}
+
+	// 7. Check if it has an ort_tensor with data / cpuData
+	if (obj.ort_tensor) {
+		const ort = obj.ort_tensor as Record<string, unknown>;
+		try {
+			if (ort.data && (Array.isArray(ort.data) || ArrayBuffer.isView(ort.data))) {
+				return ort.data as ArrayLike<number>;
+			}
+		} catch {
+			// ignore
+		}
+		if (ort.cpuData && (Array.isArray(ort.cpuData) || ArrayBuffer.isView(ort.cpuData))) {
+			return ort.cpuData as ArrayLike<number>;
+		}
+	}
+
+	const proto = Object.getPrototypeOf(obj) as object | null;
+	const protoProps = proto ? Object.getOwnPropertyNames(proto) : [];
+	const ownProps = Object.getOwnPropertyNames(obj);
+	throw new Error(
+		`Cannot extract tensor data from logits (constructor: ${obj.constructor?.name ?? 'unknown'}). Own props: ${JSON.stringify(ownProps)}, Proto methods: ${JSON.stringify(protoProps)}`,
+	);
+}
+
 

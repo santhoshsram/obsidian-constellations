@@ -133,6 +133,21 @@ export interface RerankerModelSpec {
 }
 
 /**
+ * GTE Reranker ModernBERT Base: 150M parameter ModernBERT cross-encoder from Alibaba.
+ * Official ONNX export with full sequence classification head.
+ * Supports WebGPU fp16, q8, q4 quantization, and WASM.
+ * https://huggingface.co/Alibaba-NLP/gte-reranker-modernbert-base
+ */
+export const GTE_RERANKER_MODERNBERT_BASE: RerankerModelSpec = {
+	modelId: 'Alibaba-NLP/gte-reranker-modernbert-base',
+	displayName: 'GTE ModernBERT Base',
+	hint: 'ModernBERT 150M cross-encoder',
+	batchSize: 16,
+	maxLength: 512,
+	dtypes: ['q8', 'q4'],
+};
+
+/**
  * Ettin Reranker 150M: ModernBERT-based cross-encoder with 150M params.
  * Ships with official ONNX support and runs with high throughput on WebGPU in fp16.
  * https://huggingface.co/cross-encoder/ettin-reranker-150m-v1
@@ -143,13 +158,15 @@ export const ETTIN_RERANKER_150M: RerankerModelSpec = {
 	hint: 'High accuracy cross-encoder',
 	batchSize: 16,
 	maxLength: 512,
-	dtypes: ['fp16', 'fp32'],
+	dtypes: ['fp32'],
 };
 
 export const RERANKER_MODELS: Record<string, RerankerModelSpec> = {
+	[GTE_RERANKER_MODERNBERT_BASE.modelId]: GTE_RERANKER_MODERNBERT_BASE,
 	[ETTIN_RERANKER_150M.modelId]: ETTIN_RERANKER_150M,
 };
 
-export const DEFAULT_RERANKER = ETTIN_RERANKER_150M;
+export const DEFAULT_RERANKER = GTE_RERANKER_MODERNBERT_BASE;
+
 
 

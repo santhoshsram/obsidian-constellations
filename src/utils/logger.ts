@@ -105,7 +105,12 @@ export class ConsoleLogger implements Logger {
 /** Compact JSON preview of extra args for the log file. */
 function jsonPreview(args: unknown[]): string {
 	try {
-		return JSON.stringify(args);
+		return JSON.stringify(args, (_key, value: unknown) => {
+			if (value instanceof Error) {
+				return { message: value.message, name: value.name, stack: value.stack };
+			}
+			return value as object;
+		});
 	} catch {
 		return String(args);
 	}

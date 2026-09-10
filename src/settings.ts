@@ -1,6 +1,11 @@
 import { App, ButtonComponent, PluginSettingTab, Setting } from 'obsidian';
 import type ObsidianBrainPlugin from './main';
-import { EMBEDDING_MODELS, DEFAULT_MODEL, DEFAULT_RERANKER } from './embed/models';
+import {
+	EMBEDDING_MODELS,
+	DEFAULT_MODEL,
+	RERANKER_MODELS,
+	DEFAULT_RERANKER,
+} from './embed/models';
 import type { RetrievalStrategy } from './search/retrieval';
 import { RETRIEVAL_CONFIG } from './config';
 
@@ -39,6 +44,55 @@ export const DEFAULT_SETTINGS: ObsidianBrainSettings = {
 	debugLogging: false,
 	lastIndexedAt: null,
 };
+
+export interface ModelStatus {
+	state: 'idle' | 'downloading' | 'loading' | 'ready' | 'error';
+	progress?: number;
+	device?: string;
+	error?: string;
+}
+
+export function formatModelStatus(status?: ModelStatus): string {
+	if (!status || status.state === 'idle') {
+		return 'Not loaded';
+	}
+	if (status.state === 'downloading') {
+		return `Downloading (${status.progress ?? 0}%)`;
+	}
+	if (status.state === 'loading') {
+		return 'Loading…';
+	}
+	if (status.state === 'ready') {
+		return status.device ? `Ready (${status.device.toUpperCase()})` : 'Ready';
+	}
+	if (status.state === 'error') {
+		return 'Failed to load';
+	}
+	return 'Unknown';
+}
+
+/** Render formatted status into container with color classes (ready=green, downloading=normal). */
+export function renderModelStatus(
+	containerEl: HTMLElement,
+	status?: ModelStatus,
+): void {
+	containerEl.empty();
+	containerEl.createSpan({
+		cls: 'brain-model-status-label',
+		text: 'Status: ',
+	});
+	const formatted = formatModelStatus(status);
+	const isReady = status?.state === 'ready';
+	const isDownloading = status?.state === 'downloading';
+	const cls = [
+		'brain-model-status-value',
+		isReady ? 'is-ready' : '',
+		isDownloading ? 'is-downloading' : '',
+	]
+		.filter(Boolean)
+		.join(' ');
+	containerEl.createSpan({ cls, text: formatted });
+}
 
 /** Format a millisecond timestamp into human-readable local time or 'Never'. */
 export function formatLastIndexed(
@@ -82,29 +136,39 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		let indexButton: ButtonComponent | null = null;
+		let embeddingStatusEl: HTMLElement | null = null;
+		let rerankerStatusEl: HTMLElement | null = null;
+		let embeddingDropdown: HTMLSelectElement | null = null;
 
-		new Setting(containerEl)
+		const vaultSetting = new Setting(containerEl)
+			.setClass('brain-vault-setting')
 			.setName('Vault indexing')
 			.setDesc(
 				'Load the embedding model and index the vault. Runs automatically on startup and file changes.',
 			)
 			.addButton((button) => {
 				indexButton = button;
+				const isModelBusy =
+					!this.plugin.brain?.isReady && (this.plugin.brain?.started ?? false);
 				button.setButtonText(
 					this.plugin.brain?.progress.isIndexing
 						? 'Indexing…'
+						: isModelBusy
+						? 'Loading models…'
 						: this.plugin.brain?.isReady
 						? 'Reindex vault'
 						: 'Start indexing',
 				);
-				button.setDisabled(this.plugin.brain?.progress.isIndexing ?? false);
+				button.setDisabled(
+					(this.plugin.brain?.progress.isIndexing || isModelBusy) ?? false,
+				);
 				button.onClick(async () => {
 					await this.plugin.startBrain();
 				});
 			});
 
-		// Progress UI: X/Y... [Progress bar] on line 1, Current file on line 2
-		const progressContainer = containerEl.createDiv({
+		// Progress UI: inside vault indexing card
+		const progressContainer = vaultSetting.descEl.createDiv({
 			cls: 'brain-indexing-progress',
 		});
 
@@ -137,14 +201,21 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 		this.unsubscribeProgress?.();
 		this.unsubscribeProgress = this.plugin.brain?.onProgress((p) => {
 			if (indexButton) {
-				indexButton.setDisabled(p.isIndexing);
+				const isModelBusy =
+					!this.plugin.brain?.isReady && (this.plugin.brain?.started ?? false);
+				indexButton.setDisabled(p.isIndexing || isModelBusy);
 				indexButton.setButtonText(
 					p.isIndexing
 						? 'Indexing…'
-						: this.plugin.brain.isReady
+						: isModelBusy
+						? 'Loading models…'
+						: this.plugin.brain?.isReady
 						? 'Reindex vault'
 						: 'Start indexing',
 				);
+			}
+			if (embeddingDropdown) {
+				embeddingDropdown.disabled = p.isIndexing;
 			}
 			if (p.total > 0) {
 				progressCount.setText(
@@ -159,13 +230,41 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 			}
 			currentFileEl.setText(
 				p.currentFile ||
-					(p.isIndexing ? 'Indexing...' : 'Index ready'),
+					(p.isIndexing
+						? 'Indexing...'
+						: this.plugin.settings.lastIndexedAt
+						? 'Index ready'
+						: 'Not indexed yet'),
 			);
 			lastIndexedEl.setText(
 				`Last indexed: ${formatLastIndexed(
 					p.lastIndexedAt ?? this.plugin.settings.lastIndexedAt,
 				)}`,
 			);
+			if (embeddingStatusEl) {
+				const embStatus =
+					p.embeddingStatus ?? this.plugin.brain?.embeddingStatus;
+				renderModelStatus(embeddingStatusEl, embStatus);
+				const isEmbDownloading = embStatus?.state === 'downloading';
+				embeddingProgressRow.toggleClass('is-hidden', !isEmbDownloading);
+				if (isEmbDownloading) {
+					const pct = embStatus?.progress ?? 0;
+					embeddingProgressBar.value = pct;
+					embeddingProgressPct.setText(`${pct}%`);
+				}
+			}
+			if (rerankerStatusEl) {
+				const rrStatus =
+					p.rerankerStatus ?? this.plugin.brain?.rerankerStatus;
+				renderModelStatus(rerankerStatusEl, rrStatus);
+				const isRrDownloading = rrStatus?.state === 'downloading';
+				rerankerProgressRow.toggleClass('is-hidden', !isRrDownloading);
+				if (isRrDownloading) {
+					const pct = rrStatus?.progress ?? 0;
+					rerankerProgressBar.value = pct;
+					rerankerProgressPct.setText(`${pct}%`);
+				}
+			}
 		});
 
 		new Setting(containerEl)
@@ -185,7 +284,8 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		new Setting(containerEl)
+		const embeddingSetting = new Setting(containerEl)
+			.setClass('brain-model-setting')
 			.setName('Embedding model')
 			.setDesc(
 				'Local model used for semantic search. Changing models triggers a re-index.',
@@ -203,13 +303,69 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 					EMBEDDING_MODELS[this.plugin.settings.embeddingModel]
 						? this.plugin.settings.embeddingModel
 						: DEFAULT_MODEL.modelId;
-				dropdown
-					.setValue(selected)
-					.onChange(async (value) => {
-						this.plugin.settings.embeddingModel = value;
-						await this.plugin.saveSettings();
-					});
+				const isIndexing = this.plugin.brain?.progress.isIndexing ?? false;
+				dropdown.setValue(selected).setDisabled(isIndexing);
+				embeddingDropdown = dropdown.selectEl;
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.embeddingModel = value;
+					await this.plugin.saveSettings();
+					// New model selected — tear down old pipeline and reinit from scratch.
+					this.plugin.brain?.resetForModelChange();
+					void this.plugin.startBrain();
+				});
 			});
+		const embeddingStatusContainer = embeddingSetting.descEl.createDiv({
+			cls: 'brain-model-status-container',
+		});
+		embeddingStatusEl = embeddingStatusContainer.createDiv({
+			cls: 'brain-model-status',
+		});
+		renderModelStatus(embeddingStatusEl, this.plugin.brain?.embeddingStatus);
+		const embeddingProgressRow = embeddingStatusContainer.createDiv({
+			cls: 'brain-model-progress-row is-hidden',
+		});
+		const embeddingProgressBar = embeddingProgressRow.createEl('progress', {
+			cls: 'brain-model-progress-bar',
+		});
+		embeddingProgressBar.max = 100;
+		const embeddingProgressPct = embeddingProgressRow.createSpan({
+			cls: 'brain-model-progress-pct',
+		});
+
+		const rerankerSetting = new Setting(containerEl)
+			.setClass('brain-model-setting')
+			.setName('Reranking model')
+			.addDropdown((dropdown) => {
+				for (const [id, spec] of Object.entries(RERANKER_MODELS)) {
+					const label = spec.displayName || id;
+					dropdown.addOption(id, label);
+				}
+				let selected =
+					RERANKER_MODELS[this.plugin.settings.rerankerModel]
+						? this.plugin.settings.rerankerModel
+						: DEFAULT_RERANKER.modelId;
+				if (selected === 'cross-encoder/ettin-reranker-150m-v1') {
+					selected = DEFAULT_RERANKER.modelId;
+				}
+				dropdown.setValue(selected).setDisabled(true);
+			});
+		const rerankerStatusContainer = rerankerSetting.descEl.createDiv({
+			cls: 'brain-model-status-container',
+		});
+		rerankerStatusEl = rerankerStatusContainer.createDiv({
+			cls: 'brain-model-status',
+		});
+		renderModelStatus(rerankerStatusEl, this.plugin.brain?.rerankerStatus);
+		const rerankerProgressRow = rerankerStatusContainer.createDiv({
+			cls: 'brain-model-progress-row is-hidden',
+		});
+		const rerankerProgressBar = rerankerProgressRow.createEl('progress', {
+			cls: 'brain-model-progress-bar',
+		});
+		rerankerProgressBar.max = 100;
+		const rerankerProgressPct = rerankerProgressRow.createSpan({
+			cls: 'brain-model-progress-pct',
+		});
 
 		const strategyDesc = createFragment((el) => {
 			el.createDiv({
@@ -239,8 +395,8 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 			.addDropdown((dropdown) => {
 				dropdown
 					.addOption('maxsim', 'Detailed (recommended)')
-					.addOption('cursor', 'Focused (around cursor)')
-					.addOption('mean', 'Broad (whole note)')
+					.addOption('cursor', 'Focused')
+					.addOption('mean', 'Broad')
 					.setValue(this.plugin.settings.retrievalStrategy ?? 'maxsim')
 					.onChange(async (value) => {
 						this.plugin.settings.retrievalStrategy = value as RetrievalStrategy;

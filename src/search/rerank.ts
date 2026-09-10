@@ -3,8 +3,9 @@
  */
 
 import type { ScoredChunk } from '../index/chunk-index';
-import type { Reranker, TextPair } from '../embed/reranker';
+import type { Reranker, TextPair, BatchTimingInfo } from '../embed/reranker';
 import { RETRIEVAL_CONFIG } from '../config';
+import type { Logger } from '../utils/logger';
 
 export interface FileReader {
 	read(path: string): Promise<string>;
@@ -36,6 +37,7 @@ export interface RerankCandidateOptions {
 	topK?: number;
 	defaultQueryText?: string;
 	fallbackOnError?: boolean;
+	logger?: Logger;
 }
 
 /**
@@ -52,6 +54,7 @@ export async function rerankCandidateChunks(
 		topK = RETRIEVAL_CONFIG.stage1CandidatePoolSize,
 		defaultQueryText,
 		fallbackOnError = true,
+		logger,
 	} = options;
 
 	if (candidates.length === 0) {
@@ -59,9 +62,14 @@ export async function rerankCandidateChunks(
 	}
 
 	// 1. Top-K funneling: sort by vector similarity descending and take topK
+	const tFunnelStart = performance.now();
 	const pool = [...candidates]
 		.sort((a, b) => b.score - a.score)
 		.slice(0, topK);
+	const funnelMs = performance.now() - tFunnelStart;
+	logger?.info(
+		`[rerank] Top-${topK} funneling: took ${funnelMs.toFixed(1)}ms (${candidates.length} stage 1 chunks -> pool of ${pool.length})`,
+	);
 
 	// 2. Identify unique files needed
 	const pathsToRead = new Set<string>();
@@ -72,7 +80,8 @@ export async function rerankCandidateChunks(
 		}
 	}
 
-	// 3. Parallel file reads
+	// 3. Parallel file reads (chunk fetch from vault)
+	const tReadStart = performance.now();
 	const fileMap = new Map<string, string>();
 	try {
 		await Promise.all(
@@ -83,13 +92,19 @@ export async function rerankCandidateChunks(
 		);
 	} catch (e) {
 		if (fallbackOnError) {
+			logger?.warn?.('[rerank] File read failed during reranking', e);
 			console.warn('Obsidian brain: file read failed during reranking', e);
 			return pool;
 		}
 		throw e;
 	}
+	const readMs = performance.now() - tReadStart;
+	logger?.info(
+		`[rerank] Chunk fetch: read ${pathsToRead.size} unique note files in ${readMs.toFixed(1)}ms (avg ${(readMs / Math.max(1, pathsToRead.size)).toFixed(1)}ms/file)`,
+	);
 
 	// 4. Build text pairs for inference
+	const tPairStart = performance.now();
 	const pairs: TextPair[] = [];
 	for (const c of pool) {
 		const targetContent = fileMap.get(c.record.filePath) ?? '';
@@ -114,21 +129,69 @@ export async function rerankCandidateChunks(
 
 		pairs.push({ query, passage });
 	}
+	const pairMs = performance.now() - tPairStart;
+	logger?.info(
+		`[rerank] Chunk slicing: extracted ${pairs.length} (query, passage) pairs in ${pairMs.toFixed(1)}ms`,
+	);
 
 	// 5. Batch cross-encoder inference
 	try {
-		const scores = await reranker.rerankPairs(pairs);
+		const tInferStart = performance.now();
+		const rerankOptions = logger
+			? {
+					onBatch: (info: BatchTimingInfo) => {
+						const details =
+							info.tokenizeMs !== undefined && info.inferMs !== undefined
+								? ` (tokenize=${info.tokenizeMs.toFixed(1)}ms, inference=${info.inferMs.toFixed(1)}ms)`
+								: '';
+						logger.info(
+							`[rerank] Batch ${info.batchIdx}/${info.totalBatches} (${info.batchSize} pairs): ${info.batchMs.toFixed(1)}ms${details} [${(info.batchMs / Math.max(1, info.batchSize)).toFixed(1)}ms/pair]`,
+						);
+					},
+			  }
+			: undefined;
+
+		const scores = rerankOptions
+			? await reranker.rerankPairs(pairs, rerankOptions)
+			: await reranker.rerankPairs(pairs);
+
+		const inferTotalMs = performance.now() - tInferStart;
+		logger?.info(
+			`[rerank] Cross-encoder inference complete: ${inferTotalMs.toFixed(1)}ms for ${pairs.length} pairs (${(inferTotalMs / Math.max(1, pairs.length)).toFixed(1)}ms/pair, device=${reranker.device ?? 'unknown'})`,
+		);
+
 		const reranked: ScoredChunk[] = pool.map((c, i) => ({
 			...c,
+			vectorScore: c.score,
 			score: scores[i] ?? c.score,
 		}));
 
 		// Re-sort descending by reranker score
 		reranked.sort((a, b) => b.score - a.score);
+
+		// Log individual candidate score and rank changes for top results
+		for (let i = 0; i < Math.min(10, reranked.length); i++) {
+			const c = reranked[i];
+			if (!c) continue;
+			const heading = c.record.headingPath.join(' > ') || 'root';
+			const origRank = pool.findIndex((p) => p.record.id === c.record.id) + 1;
+			const vecScore =
+				c.vectorScore !== undefined ? c.vectorScore.toFixed(3) : '?';
+			const rrScore = c.score.toFixed(3);
+			logger?.info(
+				`[rerank] Candidate #${i + 1}: "${c.record.filePath}" (${heading}) | rank ${origRank} -> ${i + 1} | vectorScore=${vecScore} -> rerankScore=${rrScore}`,
+			);
+		}
+
 		return reranked;
 	} catch (e) {
+		const errStr = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+		logger?.warn?.(
+			`[rerank] Cross-encoder reranking failed: ${errStr}`,
+			e,
+		);
+		console.warn('Obsidian brain: cross-encoder reranking failed, falling back to vector scores', e);
 		if (fallbackOnError) {
-			console.warn('Obsidian brain: cross-encoder reranking failed, falling back to vector scores', e);
 			return pool;
 		}
 		throw e;
