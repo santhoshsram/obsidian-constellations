@@ -22,6 +22,7 @@ import type { RelatedNote } from './search/related';
 import { debounce } from './utils/debounce';
 import { ConsoleLogger } from './utils/logger';
 import { BufferedLogFile } from './utils/file-log';
+import { sha1Hex } from './index/hasher';
 
 const REINDEX_DEBOUNCE_MS = 2000;
 const SAVE_DEBOUNCE_MS = 5000;
@@ -192,11 +193,21 @@ export class Brain {
 			return;
 		}
 		this.ready = true;
-		this.recordIndexCompletion(
-			`${result.total} files indexed (${this.index.size} sections)`,
-			result.total,
-			result.total,
-		);
+		const hasChanges = result.indexed > 0 || result.removed > 0;
+		if (hasChanges || !this.plugin.settings.lastIndexedAt) {
+			this.recordIndexCompletion(
+				`${result.total} files indexed (${this.index.size} sections)`,
+				result.total,
+				result.total,
+			);
+		} else {
+			this.updateProgress({
+				isIndexing: false,
+				done: result.total,
+				total: result.total,
+				currentFile: `${result.total} files indexed (${this.index.size} sections)`,
+			});
+		}
 		this.plugin.setStatus('');
 
 		this.registerFileEvents(vault);
@@ -403,12 +414,16 @@ export class Brain {
 			return;
 		}
 		try {
+			const content = await vault.read(path);
+			const hash = await sha1Hex(content);
+			if (this.service.getState().fileHashes[path] === hash) {
+				return;
+			}
 			this.updateProgress({
 				isIndexing: true,
 				currentFile: `Indexing ${path}…`,
 			});
 			this.plugin.setStatus('Brain: indexing…');
-			const content = await vault.read(path);
 			await this.service.indexFile(path, content);
 			this.recordIndexCompletion(`Updated ${path}`);
 			this.plugin.setStatus('');
