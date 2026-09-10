@@ -212,7 +212,7 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Chunks per note')
+			.setName('Sections per note')
 			.setDesc(
 				'Maximum number of matching sections shown per related note.',
 			)

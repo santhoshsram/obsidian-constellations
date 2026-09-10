@@ -193,7 +193,7 @@ export class Brain {
 		}
 		this.ready = true;
 		this.recordIndexCompletion(
-			`${result.total} files indexed (${this.index.size} chunks)`,
+			`${result.total} files indexed (${this.index.size} sections)`,
 			result.total,
 			result.total,
 		);
@@ -238,7 +238,7 @@ export class Brain {
 			await this.persist();
 			this.ready = true;
 			this.recordIndexCompletion(
-				`${result.total} files indexed (${this.index.size} chunks)`,
+				`${result.total} files indexed (${this.index.size} sections)`,
 				result.total,
 				result.total,
 			);
