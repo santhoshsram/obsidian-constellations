@@ -112,6 +112,20 @@ describe('Brain progress transitions during init', () => {
 
 	it('does not emit downloading status when models are already cached', async () => {
 		mockIsModelCached.mockResolvedValue(true);
+		mockCreateEmbeddingPipeline.mockImplementationOnce(async (_model, progress) => {
+			progress?.({ status: 'progress', file: 'model.onnx', progress: 100 });
+			return {
+				pipe: vi.fn(async () => ({ data: new Float32Array([1, 0]) })),
+				device: 'webgpu',
+			};
+		});
+		mockCreateRerankerPipeline.mockImplementationOnce(async (_model, progress) => {
+			progress?.({ status: 'progress', file: 'reranker.onnx', progress: 50 });
+			return {
+				rerankPairs: vi.fn(async () => [1]),
+				device: 'webgpu',
+			};
+		});
 		const statuses: string[] = [];
 
 		const fakePlugin = {

@@ -162,11 +162,11 @@ To maximize connection precision without sacrificing speed, retrieval operates a
 
 1. **Stage 1 — Fast Dense Vector Retrieval**:
    - Executes the selected matching mode (Detailed MaxSim, Focused, or Broad) across all vault chunks.
-   - Funnels the top 50 candidate chunks based on cosine similarity.
-2. **Stage 2 — Cross-Encoder Reranking (`cross-encoder/ettin-reranker-150m-v1`)**:
+   - Funnels the top 35 candidate chunks based on cosine similarity (`RETRIEVAL_CONFIG.stage1CandidatePoolSize = 35`).
+2. **Stage 2 — Cross-Encoder Reranking (`Xenova/ms-marco-MiniLM-L-6-v2`)**:
    - **Parallel cached reads**: Reads candidate files concurrently via `app.vault.cachedRead()` and extracts precise text slices using 0-indexed line coordinates (`[startLine..endLine]`).
    - **Pair construction**: Constructs `(source_section_text, candidate_section_text)` pairs for Detailed mode, or `(cursor_chunk_text, candidate_section_text)` for Focused mode.
-   - **Batched WebGPU inference**: Evaluates all candidate pairs in a single batched pass with fp16 precision.
+   - **Single-batch WebGPU inference**: Evaluates all candidate pairs in a single unified batch (`batchSize: 50`) using `fp16` precision (falling back to `fp32`) on WebGPU. Inference runs in ~475ms (~14ms/pair), with total end-to-end retrieval completing in ~500ms.
    - **Rescoring & grouping**: Updates candidate scores with cross-encoder logits and passes them to `relatedNotes` to group by file, apply `maxChunksPerNote`, and present the top `maxRelatedNotes`.
    - **Resilient fallback**: If the reranker model is not loaded or encounters an issue, retrieval seamlessly falls back to vector scores without interrupting the user.
 

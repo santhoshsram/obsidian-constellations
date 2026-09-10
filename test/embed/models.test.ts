@@ -39,12 +39,12 @@ describe('model registry', () => {
 });
 
 describe('reranker model registry', () => {
-	it('defines DEFAULT_RERANKER with gte-reranker-modernbert-base and q8/q4 support', async () => {
+	it('defines DEFAULT_RERANKER with ms-marco-MiniLM-L-6-v2 and fp32 support', async () => {
 		const { DEFAULT_RERANKER, RERANKER_MODELS } = await import('../../src/embed/models');
 		expect(DEFAULT_RERANKER).toBeDefined();
-		expect(DEFAULT_RERANKER.modelId).toBe('Alibaba-NLP/gte-reranker-modernbert-base');
-		expect(DEFAULT_RERANKER.dtypes).toEqual(['q8', 'q4']);
-		expect(DEFAULT_RERANKER.batchSize).toBeGreaterThan(0);
+		expect(DEFAULT_RERANKER.modelId).toBe('Xenova/ms-marco-MiniLM-L-6-v2');
+		expect(DEFAULT_RERANKER.dtypes).toEqual(['fp16', 'fp32']);
+		expect(DEFAULT_RERANKER.batchSize).toBe(50);
 		expect(DEFAULT_RERANKER.maxLength).toBeGreaterThanOrEqual(256);
 		expect(RERANKER_MODELS[DEFAULT_RERANKER.modelId]).toBe(DEFAULT_RERANKER);
 	});

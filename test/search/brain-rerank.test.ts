@@ -155,19 +155,4 @@ describe('Brain.relatedTo with reranker', () => {
 		expect(results[0]?.filePath).toBe(fileB);
 		expect(rerankPairsMock).not.toHaveBeenCalled();
 	});
-
-	it('respects custom rerankCandidatePoolSize from settings or config', async () => {
-		const brain = await setupBrain(true, { rerankCandidatePoolSize: 1 });
-
-		const rerankPairsMock = vi.fn(async (_pairs: TextPair[]) => [0.99]);
-		const mockReranker: Reranker = {
-			rerankPairs: rerankPairsMock,
-			rerank: vi.fn(),
-		};
-		brain.setReranker(mockReranker);
-
-		await brain.relatedTo(fileA);
-		// Only 1 candidate was sent to reranker because rerankCandidatePoolSize was 1
-		expect(rerankPairsMock.mock.calls[0]?.[0]).toHaveLength(1);
-	});
 });

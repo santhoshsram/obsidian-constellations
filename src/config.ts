@@ -13,5 +13,5 @@ export const RETRIEVAL_CONFIG = {
 	 * - Higher values (e.g. 75–100): wider recall net, slightly longer rerank time.
 	 * - Lower values (e.g. 20–30): faster inference, narrower candidate pool.
 	 */
-	stage1CandidatePoolSize: 50,
+	stage1CandidatePoolSize: 35,
 } as const;

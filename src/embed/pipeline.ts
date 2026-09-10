@@ -88,7 +88,7 @@ async function loadTransformers(): Promise<typeof import('@huggingface/transform
 	// a Proxy that overrides only `release.name`, just for the duration
 	// of the dynamic import (transformers.js snapshots its environment
 	// detection once, at module evaluation).
-	const globalScope = globalThis as { process?: unknown };
+	const globalScope = window as { process?: unknown };
 	const originalProcess = globalScope.process;
 	if (typeof originalProcess !== 'object' || originalProcess === null) {
 		throw new Error('expected a global process object');
@@ -174,11 +174,17 @@ export async function createRerankerPipeline(
 	let lastError: unknown;
 	for (const cfg of fallbacks) {
 		try {
+			const session_options =
+				cfg.dtype === 'fp16'
+					? { graphOptimizationLevel: 'basic' as const }
+					: undefined;
+
 			const classifier = await AutoModelForSequenceClassification.from_pretrained(
 				model.modelId,
 				{
 					...(cfg as Record<string, unknown>),
 					progress_callback: onProgress,
+					...(session_options ? { session_options } : {}),
 				},
 			);
 			const device: DeviceMode = cfg.device === 'webgpu' ? 'webgpu' : 'wasm';
@@ -195,7 +201,7 @@ export async function createRerankerPipeline(
 					const passages = pairs.map((p) => p.passage);
 					const inputs = (tokenizer as (texts: string[], options: Record<string, unknown>) => unknown)(queries, {
 						text_pair: passages,
-						padding: true,
+						padding: 'max_length',
 						truncation: true,
 						max_length: model.maxLength,
 					});
@@ -249,7 +255,7 @@ async function probeWebgpu(): Promise<'usable' | 'missing' | 'failed'> {
 	}
 }
 
-/** Check whether model weights exist in Chromium CacheStorage ('transformers-cache'). */
+/** Check whether ONNX model weights (.onnx) exist in Chromium CacheStorage ('transformers-cache'). */
 export async function isModelCached(modelId: string): Promise<boolean> {
 	if (typeof caches === 'undefined') {
 		return false;
@@ -257,7 +263,9 @@ export async function isModelCached(modelId: string): Promise<boolean> {
 	try {
 		const cache = await caches.open('transformers-cache');
 		const keys = await cache.keys();
-		return keys.some((req) => req.url.includes(modelId));
+		return keys.some(
+			(req) => req.url.includes(modelId) && req.url.includes('.onnx'),
+		);
 	} catch {
 		return false;
 	}

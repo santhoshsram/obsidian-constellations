@@ -114,4 +114,57 @@ describe('index persistence', () => {
 		await saveIndex(storage, index, STATE);
 		await expect(loadIndex(storage, 3)).rejects.toThrow();
 	});
+
+	it('returns null and does not read chunks or vectors when expectedModelId does not match', async () => {
+		const storage = new MemStorage();
+		const index = await buildIndex();
+		await saveIndex(storage, index, STATE);
+
+		const readBinaryCalls: string[] = [];
+		const readJsonCalls: string[] = [];
+		const origReadBinary = storage.readBinary.bind(storage);
+		const origReadJson = storage.readJson.bind(storage);
+		storage.readBinary = async (path) => {
+			readBinaryCalls.push(path);
+			return origReadBinary(path);
+		};
+		storage.readJson = async (path) => {
+			readJsonCalls.push(path);
+			return origReadJson(path);
+		};
+
+		const loaded = await loadIndex(storage, {
+			expectedModelId: 'different-model',
+		});
+
+		expect(loaded).toBeNull();
+		expect(readBinaryCalls).toEqual([]);
+		expect(readJsonCalls).toEqual(['state.json']);
+	});
+
+	it('does not read chunks or vectors when expectedDimensions does not match', async () => {
+		const storage = new MemStorage();
+		const index = await buildIndex();
+		await saveIndex(storage, index, STATE);
+
+		const readBinaryCalls: string[] = [];
+		const readJsonCalls: string[] = [];
+		const origReadBinary = storage.readBinary.bind(storage);
+		const origReadJson = storage.readJson.bind(storage);
+		storage.readBinary = async (path) => {
+			readBinaryCalls.push(path);
+			return origReadBinary(path);
+		};
+		storage.readJson = async (path) => {
+			readJsonCalls.push(path);
+			return origReadJson(path);
+		};
+
+		await expect(
+			loadIndex(storage, { expectedDimensions: 999 }),
+		).rejects.toThrow();
+
+		expect(readBinaryCalls).toEqual([]);
+		expect(readJsonCalls).toEqual(['state.json']);
+	});
 });

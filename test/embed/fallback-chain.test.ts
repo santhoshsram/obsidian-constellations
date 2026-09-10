@@ -44,8 +44,7 @@ describe('buildFallbackChain', () => {
 		const { GTE_RERANKER_MODERNBERT_BASE } = await import('../../src/embed/models');
 		const chain = buildFallbackChain(GTE_RERANKER_MODERNBERT_BASE, true);
 		expect(chain).toEqual([
-			{ device: 'webgpu', dtype: 'q8' },
-			{ device: 'webgpu', dtype: 'q4' },
+			{ device: 'webgpu', dtype: 'fp32' },
 			{ dtype: 'q8' },
 			{},
 		]);

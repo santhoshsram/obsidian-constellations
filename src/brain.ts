@@ -124,6 +124,59 @@ export class Brain {
 		this.reranker = reranker;
 	}
 
+	/** Reload the reranker pipeline on demand (e.g. from settings). */
+	async reloadReranker(): Promise<void> {
+		if (
+			this.rerankerStatus.state === 'loading' ||
+			this.rerankerStatus.state === 'downloading'
+		) {
+			return;
+		}
+		await this.loadReranker();
+	}
+
+	async loadReranker(): Promise<void> {
+		if (this.plugin.settings.rerankerEnabled === false) {
+			return;
+		}
+		try {
+			const rerankerModel = this.currentRerankerModel();
+			this.logger.info(`creating reranker pipeline for model ${rerankerModel.modelId}`);
+			this.setRerankerStatus({ state: 'loading' });
+			this.plugin.setStatus('Brain: loading reranking model…');
+			const isCached = await isModelCached(rerankerModel.modelId);
+			const createdReranker = await createRerankerPipeline(rerankerModel, (p) => {
+				const isWeightsFile = !p.file || p.file.endsWith('.onnx') || p.file.endsWith('.onnx_data') || p.file.endsWith('.safetensors') || p.file.endsWith('.bin');
+				if (!isCached && p.status === 'progress' && typeof p.progress === 'number' && isWeightsFile) {
+					const pct = Math.round(p.progress);
+					this.plugin.setStatus(`Brain: downloading reranking model ${pct}%`);
+					this.setRerankerStatus({ state: 'downloading', progress: pct });
+				} else if (p.status === 'done' && isWeightsFile) {
+					this.setRerankerStatus({ state: 'loading' });
+				}
+			});
+			this.reranker = new TransformersReranker(
+				createdReranker.rerankPairs,
+				rerankerModel,
+				createdReranker.device,
+			);
+			this.setRerankerStatus({ state: 'ready', device: createdReranker.device });
+			this.plugin.setStatus('');
+			this.logger.info(
+				`reranker pipeline ready on device=${createdReranker.device}`,
+			);
+		} catch (e) {
+			this.setRerankerStatus({ state: 'error', error: String(e) });
+			this.plugin.setStatus('');
+			this.logger.warn(
+				'reranker model failed to load, retrieval will continue with vector scores',
+				{ kind: 'rerank' },
+				e,
+			);
+			console.warn('Obsidian brain: reranker model failed to load', e);
+		}
+	}
+
 	/**
 	 * Reset all pipeline state so a fresh init() picks up the new model.
 	 * Call this whenever embeddingModel changes in settings.
@@ -138,7 +191,7 @@ export class Brain {
 		this.embeddingStatus = { state: 'idle' };
 		this.rerankerStatus = { state: 'idle' };
 		this.updateProgress({
-			isIndexing: false,
+			isIndexing: true,
 			done: 0,
 			total: 0,
 			currentFile: '',
@@ -165,13 +218,26 @@ export class Brain {
 		this.logger.info(`using model ${model.modelId}`);
 		const vault = new ObsidianVaultSource(this.plugin.app);
 
-		// Load a persisted index; a model switch forces a full rebuild.
+		// Load a persisted index; a model switch forces a full rebuild without reading old vectors.
 		let state = null;
 		try {
-			const loaded = await loadIndex(this.storage, model.dimensions);
-			if (loaded && loaded.state.modelId === model.modelId) {
+			const loaded = await loadIndex(this.storage, {
+				expectedDimensions: model.dimensions,
+				expectedModelId: model.modelId,
+			});
+			if (loaded) {
 				this.index = loaded.index;
 				state = loaded.state;
+				const fileCount = Object.keys(state.fileHashes).length;
+				this.updateProgress({
+					done: fileCount,
+					total: fileCount,
+					currentFile: `${fileCount} files / ${this.index.size} sections indexed`,
+				});
+			} else {
+				this.logger.info(
+					`no index found for model ${model.modelId}, starting fresh`,
+				);
 			}
 		} catch (e) {
 			this.logger.warn('failed to load index, rebuilding', { kind: 'load' }, e);
@@ -185,14 +251,17 @@ export class Brain {
 		let pipe;
 		try {
 			this.logger.info(`creating pipeline for model ${model.modelId}`);
-			const embeddingCached = await isModelCached(model.modelId);
 			this.setEmbeddingStatus({ state: 'loading' });
 			this.plugin.setStatus('Brain: loading embedding model…');
+			const isCached = await isModelCached(model.modelId);
 			const created = await createEmbeddingPipeline(model, (p) => {
-				if (!embeddingCached && p.status === 'progress' && p.file) {
-					const pct = Math.round(p.progress ?? 0);
+				const isWeightsFile = !p.file || p.file.endsWith('.onnx') || p.file.endsWith('.onnx_data') || p.file.endsWith('.safetensors') || p.file.endsWith('.bin');
+				if (!isCached && p.status === 'progress' && typeof p.progress === 'number' && isWeightsFile) {
+					const pct = Math.round(p.progress);
 					this.plugin.setStatus(`Brain: downloading embedding model ${pct}%`);
 					this.setEmbeddingStatus({ state: 'downloading', progress: pct });
+				} else if (p.status === 'done' && isWeightsFile) {
+					this.setEmbeddingStatus({ state: 'loading' });
 				}
 			});
 			pipe = created.pipe;
@@ -200,7 +269,7 @@ export class Brain {
 				`embedding pipeline ready on device=${created.device}`,
 			);
 			this.setEmbeddingStatus({ state: 'ready', device: created.device });
-			this.plugin.setStatus('Brain: loading embedding model…');
+			this.plugin.setStatus('');
 		} catch (e) {
 			this.setEmbeddingStatus({ state: 'error', error: String(e) });
 			this.plugin.setStatus('Brain: model failed to load');
@@ -214,37 +283,7 @@ export class Brain {
 		this.embedder = new TransformersEmbedder(pipe, model);
 
 		if (this.plugin.settings.rerankerEnabled !== false) {
-			try {
-				const rerankerModel = this.currentRerankerModel();
-				const rerankerCached = await isModelCached(rerankerModel.modelId);
-				this.logger.info(`creating reranker pipeline for model ${rerankerModel.modelId}`);
-				this.setRerankerStatus({ state: 'loading' });
-				this.plugin.setStatus('Brain: loading reranking model…');
-				const createdReranker = await createRerankerPipeline(rerankerModel, (p) => {
-					if (!rerankerCached && p.status === 'progress' && p.file) {
-						const pct = Math.round(p.progress ?? 0);
-						this.plugin.setStatus(`Brain: downloading reranking model ${pct}%`);
-						this.setRerankerStatus({ state: 'downloading', progress: pct });
-					}
-				});
-				this.reranker = new TransformersReranker(
-					createdReranker.rerankPairs,
-					rerankerModel,
-					createdReranker.device,
-				);
-				this.setRerankerStatus({ state: 'ready', device: createdReranker.device });
-				this.logger.info(
-					`reranker pipeline ready on device=${createdReranker.device}`,
-				);
-			} catch (e) {
-				this.setRerankerStatus({ state: 'error', error: String(e) });
-				this.logger.warn(
-					'reranker model failed to load, retrieval will continue with vector scores',
-					{ kind: 'rerank' },
-					e,
-				);
-				console.warn('Obsidian brain: reranker model failed to load', e);
-			}
+			await this.loadReranker();
 		}
 
 		this.service = new IndexingService(
@@ -425,9 +464,7 @@ export class Brain {
 		// 2. Stage 2: Cross-encoder reranking (if enabled and loaded)
 		if (this.reranker && this.plugin.settings.rerankerEnabled !== false) {
 			const vault = new ObsidianVaultSource(this.plugin.app);
-			const topK =
-				this.plugin.settings.rerankCandidatePoolSize ??
-				RETRIEVAL_CONFIG.stage1CandidatePoolSize;
+			const topK = RETRIEVAL_CONFIG.stage1CandidatePoolSize;
 			const tStage2Start = performance.now();
 			const reranked = await rerankCandidateChunks({
 				candidates,
@@ -626,19 +663,16 @@ export class Brain {
 			if (this.service.getState().fileHashes[path] === hash) {
 				return;
 			}
-			this.updateProgress({
-				isIndexing: true,
-				currentFile: `Indexing ${path}…`,
-			});
 			this.plugin.setStatus('Brain: indexing…');
 			await this.service.indexFile(path, content);
-			this.recordIndexCompletion(`Updated ${path}`);
+			const state = this.service.getState();
+			const fileCount = Object.keys(state.fileHashes).length;
+			const sectionCount = this.index ? this.index.size : 0;
+			this.recordIndexCompletion(
+				`${fileCount} files / ${sectionCount} sections indexed`,
+			);
 			this.plugin.setStatus('');
 		} catch (e) {
-			this.updateProgress({
-				isIndexing: false,
-				currentFile: `Failed to index ${path}`,
-			});
 			this.plugin.setStatus('');
 			console.warn(`Obsidian brain: failed to index ${path}`, e);
 		}

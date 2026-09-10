@@ -55,24 +55,42 @@ export async function saveIndex(
 	await storage.writeJson(STATE_FILE, state);
 }
 
+export interface LoadIndexOptions {
+	expectedDimensions?: number;
+	expectedModelId?: string;
+}
+
 /**
- * Load a previously saved index, or null if none exists. Throws when the
- * saved dimensions don't match `expectedDimensions` (caller should treat
- * this as a full-rebuild signal).
+ * Load a previously saved index, or null if none exists.
+ *
+ * Reads state.json first. If `expectedModelId` does not match, returns null
+ * immediately without reading chunks.json or vectors.bin from disk.
+ *
+ * Throws when the saved dimensions don't match `expectedDimensions` (caller
+ * should treat this as a full-rebuild signal).
  */
 export async function loadIndex(
 	storage: IndexStorage,
-	expectedDimensions?: number,
+	options?: number | LoadIndexOptions,
 ): Promise<LoadedIndex | null> {
 	if (!(await storage.exists(STATE_FILE))) {
 		return null;
 	}
 	const state = (await storage.readJson(STATE_FILE)) as IndexState | null;
-	const records = (await storage.readJson(CHUNKS_FILE)) as
-		| ChunkRecord[]
-		| null;
-	const vectorsBuffer = await storage.readBinary(VECTORS_FILE);
-	if (!state || !records || !vectorsBuffer) {
+	if (!state) {
+		return null;
+	}
+
+	const expectedModelId =
+		typeof options === 'object' && options !== null
+			? options.expectedModelId
+			: undefined;
+	const expectedDimensions =
+		typeof options === 'number' ? options : options?.expectedDimensions;
+
+	// If a specific model was requested and the saved index was built with a different model,
+	// do NOT read chunks or vectors — return null to signal a fresh build for the new model.
+	if (expectedModelId && state.modelId !== expectedModelId) {
 		return null;
 	}
 
@@ -81,6 +99,14 @@ export async function loadIndex(
 		throw new Error(
 			`saved index has ${state.dimensions} dimensions, expected ${dimensions}`,
 		);
+	}
+
+	const records = (await storage.readJson(CHUNKS_FILE)) as
+		| ChunkRecord[]
+		| null;
+	const vectorsBuffer = await storage.readBinary(VECTORS_FILE);
+	if (!records || !vectorsBuffer) {
+		return null;
 	}
 
 	const floats = new Float32Array(vectorsBuffer);

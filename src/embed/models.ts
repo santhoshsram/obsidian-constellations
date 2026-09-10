@@ -56,7 +56,7 @@ export const ALL_MINILM_L6_V2: EmbeddingModelSpec = {
 	queryPrefix: '',
 	maxTokensPerChunk: 256,
 	batchSize: 32,
-	dtypes: ['fp16', 'q8', 'fp32'],
+	dtypes: ['fp16', 'fp32'],
 	maxLength: 256,
 };
 
@@ -76,7 +76,7 @@ export const ARCTIC_EMBED_XS: EmbeddingModelSpec = {
 	queryPrefix: 'query: ',
 	maxTokensPerChunk: 512,
 	batchSize: 16,
-	dtypes: ['fp16', 'q8', 'fp32'],
+	dtypes: ['fp16', 'fp32'],
 	maxLength: 512,
 };
 
@@ -98,7 +98,7 @@ export const EMBEDDINGGEMMA_300M: EmbeddingModelSpec = {
 	batchSize: 8,
 	// Official guidance: activations do NOT support fp16 — use fp32, q8
 	// or q4. q4 halves disk vs q8 with minimal quality loss.
-	dtypes: ['q8', 'q4', 'fp32'],
+	dtypes: ['q4', 'fp32'],
 	maxLength: 2048,
 };
 
@@ -142,31 +142,28 @@ export const GTE_RERANKER_MODERNBERT_BASE: RerankerModelSpec = {
 	modelId: 'Alibaba-NLP/gte-reranker-modernbert-base',
 	displayName: 'GTE ModernBERT Base',
 	hint: 'ModernBERT 150M cross-encoder',
-	batchSize: 16,
-	maxLength: 512,
-	dtypes: ['q8', 'q4'],
-};
-
-/**
- * Ettin Reranker 150M: ModernBERT-based cross-encoder with 150M params.
- * Ships with official ONNX support and runs with high throughput on WebGPU in fp16.
- * https://huggingface.co/cross-encoder/ettin-reranker-150m-v1
- */
-export const ETTIN_RERANKER_150M: RerankerModelSpec = {
-	modelId: 'cross-encoder/ettin-reranker-150m-v1',
-	displayName: 'Ettin Reranker 150M',
-	hint: 'High accuracy cross-encoder',
-	batchSize: 16,
+	batchSize: 50,
 	maxLength: 512,
 	dtypes: ['fp32'],
 };
 
-export const RERANKER_MODELS: Record<string, RerankerModelSpec> = {
-	[GTE_RERANKER_MODERNBERT_BASE.modelId]: GTE_RERANKER_MODERNBERT_BASE,
-	[ETTIN_RERANKER_150M.modelId]: ETTIN_RERANKER_150M,
+/**
+ * MS MARCO MiniLM-L-6-v2: A tiny 22M parameter cross-encoder.
+ * The absolute gold standard for extremely fast, lightweight reranking.
+ * Ships with official ONNX support from Xenova for transformers.js.
+ * https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2
+ */
+export const MS_MARCO_MINILM_L6_V2: RerankerModelSpec = {
+	modelId: 'Xenova/ms-marco-MiniLM-L-6-v2',
+	displayName: 'MiniLM L6 Reranker',
+	hint: 'Extremely fast 22M cross-encoder',
+	batchSize: 50,
+	maxLength: 512,
+	dtypes: ['fp16', 'fp32'],
 };
 
-export const DEFAULT_RERANKER = GTE_RERANKER_MODERNBERT_BASE;
+export const RERANKER_MODELS: Record<string, RerankerModelSpec> = {
+	[MS_MARCO_MINILM_L6_V2.modelId]: MS_MARCO_MINILM_L6_V2,
+};
 
-
-
+export const DEFAULT_RERANKER = MS_MARCO_MINILM_L6_V2;

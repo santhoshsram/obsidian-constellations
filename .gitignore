@@ -25,3 +25,8 @@ state.json
 
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
+
+# Scratch test scripts
+test_*.mjs
+scratch/
+

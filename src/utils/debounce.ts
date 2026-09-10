@@ -9,9 +9,9 @@ export function debounce<A extends unknown[]>(
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	return (...args: A) => {
 		if (timer !== null) {
-			globalThis.clearTimeout(timer);
+			clearTimeout(timer);
 		}
-		timer = globalThis.setTimeout(() => {
+		timer = setTimeout(() => {
 			timer = null;
 			fn(...args);
 		}, waitMs);
