@@ -1,5 +1,6 @@
 import { App, ButtonComponent, PluginSettingTab, Setting } from 'obsidian';
 import type ObsidianBrainPlugin from './main';
+import type { BrainProgress } from './brain';
 import {
 	EMBEDDING_MODELS,
 	DEFAULT_MODEL,
@@ -135,11 +136,26 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		let indexButton: ButtonComponent | null = null;
-		let embeddingStatusEl: HTMLElement | null = null;
-		let rerankerStatusEl: HTMLElement | null = null;
-		let embeddingDropdown: HTMLSelectElement | null = null;
+		// -- Elements --
+		let indexButton: ButtonComponent;
+		let progressRow: HTMLElement;
+		let progressCount: HTMLElement;
+		let progressBar: HTMLProgressElement;
+		let statsEl: HTMLElement;
+		let lastIndexedEl: HTMLElement;
 
+		let embeddingDropdown: HTMLSelectElement;
+		let embeddingStatusEl: HTMLElement;
+		let embeddingProgressRow: HTMLElement;
+		let embeddingProgressBar: HTMLProgressElement;
+		let embeddingProgressPct: HTMLElement;
+
+		let rerankerStatusEl: HTMLElement;
+		let rerankerProgressRow: HTMLElement;
+		let rerankerProgressBar: HTMLProgressElement;
+		let rerankerProgressPct: HTMLElement;
+
+		// -- DOM Construction --
 		const vaultSetting = new Setting(containerEl)
 			.setClass('brain-vault-setting')
 			.setName('Vault indexing')
@@ -148,124 +164,20 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 			)
 			.addButton((button) => {
 				indexButton = button;
-				const isModelBusy =
-					!this.plugin.brain?.isReady && (this.plugin.brain?.started ?? false);
-				button.setButtonText(
-					this.plugin.brain?.progress.isIndexing
-						? 'Indexing…'
-						: isModelBusy
-						? 'Loading models…'
-						: this.plugin.brain?.isReady
-						? 'Reindex vault'
-						: 'Start indexing',
-				);
-				button.setDisabled(
-					(this.plugin.brain?.progress.isIndexing || isModelBusy) ?? false,
-				);
-				button.onClick(async () => {
-					await this.plugin.startBrain();
+				button.onClick(() => {
+					void this.plugin.startBrain();
 				});
 			});
 
-		// Progress UI: inside vault indexing card
 		const progressContainer = vaultSetting.descEl.createDiv({
 			cls: 'brain-indexing-progress',
 		});
 
-		const progressRow = progressContainer.createDiv({
-			cls: 'brain-progress-row',
-		});
-
-		const progressCount = progressRow.createSpan({
-			cls: 'brain-progress-count',
-		});
-
-		const progressBar = progressRow.createEl('progress', {
-			cls: 'brain-progress-bar',
-		});
-
-		const currentFileEl = progressContainer.createDiv({
-			cls: 'brain-progress-file',
-		});
-
-		const lastIndexedEl = progressContainer.createDiv({
-			cls: 'brain-progress-last-indexed',
-		});
-		lastIndexedEl.setText(
-			`Last indexed: ${formatLastIndexed(
-				this.plugin.settings.lastIndexedAt,
-			)}`,
-		);
-
-		// Subscribe to real-time progress updates while setting tab is open
-		this.unsubscribeProgress?.();
-		this.unsubscribeProgress = this.plugin.brain?.onProgress((p) => {
-			if (indexButton) {
-				const isModelBusy =
-					!this.plugin.brain?.isReady && (this.plugin.brain?.started ?? false);
-				indexButton.setDisabled(p.isIndexing || isModelBusy);
-				indexButton.setButtonText(
-					p.isIndexing
-						? 'Indexing…'
-						: isModelBusy
-						? 'Loading models…'
-						: this.plugin.brain?.isReady
-						? 'Reindex vault'
-						: 'Start indexing',
-				);
-			}
-			if (embeddingDropdown) {
-				embeddingDropdown.disabled = p.isIndexing;
-			}
-			if (p.total > 0) {
-				progressCount.setText(
-					`${p.done}/${p.total}${p.isIndexing ? '…' : ''}`,
-				);
-				progressBar.value = p.done;
-				progressBar.max = p.total;
-			} else {
-				progressCount.setText(p.isIndexing ? 'Starting…' : 'Idle');
-				progressBar.value = 0;
-				progressBar.max = 1;
-			}
-			currentFileEl.setText(
-				p.currentFile ||
-					(p.isIndexing
-						? 'Indexing...'
-						: this.plugin.settings.lastIndexedAt
-						? 'Index ready'
-						: 'Not indexed yet'),
-			);
-			lastIndexedEl.setText(
-				`Last indexed: ${formatLastIndexed(
-					p.lastIndexedAt ?? this.plugin.settings.lastIndexedAt,
-				)}`,
-			);
-			if (embeddingStatusEl) {
-				const embStatus =
-					p.embeddingStatus ?? this.plugin.brain?.embeddingStatus;
-				renderModelStatus(embeddingStatusEl, embStatus);
-				const isEmbDownloading = embStatus?.state === 'downloading';
-				embeddingProgressRow.toggleClass('is-hidden', !isEmbDownloading);
-				if (isEmbDownloading) {
-					const pct = embStatus?.progress ?? 0;
-					embeddingProgressBar.value = pct;
-					embeddingProgressPct.setText(`${pct}%`);
-				}
-			}
-			if (rerankerStatusEl) {
-				const rrStatus =
-					p.rerankerStatus ?? this.plugin.brain?.rerankerStatus;
-				renderModelStatus(rerankerStatusEl, rrStatus);
-				const isRrDownloading = rrStatus?.state === 'downloading';
-				rerankerProgressRow.toggleClass('is-hidden', !isRrDownloading);
-				if (isRrDownloading) {
-					const pct = rrStatus?.progress ?? 0;
-					rerankerProgressBar.value = pct;
-					rerankerProgressPct.setText(`${pct}%`);
-				}
-			}
-		});
+		progressRow = progressContainer.createDiv({ cls: 'brain-progress-row' });
+		progressCount = progressRow.createSpan({ cls: 'brain-progress-count' });
+		progressBar = progressRow.createEl('progress', { cls: 'brain-progress-bar' });
+		statsEl = progressContainer.createDiv({ cls: 'brain-progress-file' });
+		lastIndexedEl = progressContainer.createDiv({ cls: 'brain-progress-last-indexed' });
 
 		new Setting(containerEl)
 			.setName('Debug logging')
@@ -303,13 +215,11 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 					EMBEDDING_MODELS[this.plugin.settings.embeddingModel]
 						? this.plugin.settings.embeddingModel
 						: DEFAULT_MODEL.modelId;
-				const isIndexing = this.plugin.brain?.progress.isIndexing ?? false;
-				dropdown.setValue(selected).setDisabled(isIndexing);
+				dropdown.setValue(selected);
 				embeddingDropdown = dropdown.selectEl;
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.embeddingModel = value;
 					await this.plugin.saveSettings();
-					// New model selected — tear down old pipeline and reinit from scratch.
 					this.plugin.brain?.resetForModelChange();
 					void this.plugin.startBrain();
 				});
@@ -320,15 +230,14 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 		embeddingStatusEl = embeddingStatusContainer.createDiv({
 			cls: 'brain-model-status',
 		});
-		renderModelStatus(embeddingStatusEl, this.plugin.brain?.embeddingStatus);
-		const embeddingProgressRow = embeddingStatusContainer.createDiv({
-			cls: 'brain-model-progress-row is-hidden',
+		embeddingProgressRow = embeddingStatusContainer.createDiv({
+			cls: 'brain-model-progress-row',
 		});
-		const embeddingProgressBar = embeddingProgressRow.createEl('progress', {
+		embeddingProgressBar = embeddingProgressRow.createEl('progress', {
 			cls: 'brain-model-progress-bar',
 		});
 		embeddingProgressBar.max = 100;
-		const embeddingProgressPct = embeddingProgressRow.createSpan({
+		embeddingProgressPct = embeddingProgressRow.createSpan({
 			cls: 'brain-model-progress-pct',
 		});
 
@@ -355,15 +264,14 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 		rerankerStatusEl = rerankerStatusContainer.createDiv({
 			cls: 'brain-model-status',
 		});
-		renderModelStatus(rerankerStatusEl, this.plugin.brain?.rerankerStatus);
-		const rerankerProgressRow = rerankerStatusContainer.createDiv({
-			cls: 'brain-model-progress-row is-hidden',
+		rerankerProgressRow = rerankerStatusContainer.createDiv({
+			cls: 'brain-model-progress-row',
 		});
-		const rerankerProgressBar = rerankerProgressRow.createEl('progress', {
+		rerankerProgressBar = rerankerProgressRow.createEl('progress', {
 			cls: 'brain-model-progress-bar',
 		});
 		rerankerProgressBar.max = 100;
-		const rerankerProgressPct = rerankerProgressRow.createSpan({
+		rerankerProgressPct = rerankerProgressRow.createSpan({
 			cls: 'brain-model-progress-pct',
 		});
 
@@ -450,5 +358,68 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+
+		// -- Reactive UI Update --
+		const updateUI = (p: BrainProgress) => {
+			const isModelBusy = !this.plugin.brain?.isReady && (this.plugin.brain?.started ?? false);
+			const isIndexing = p.isIndexing;
+
+			// 1. Vault Indexing Card
+			indexButton.setDisabled(isIndexing || isModelBusy);
+			indexButton.setButtonText(isIndexing ? 'Indexing…' : 'Reindex vault');
+
+			progressRow.toggleClass('is-invisible', !isIndexing);
+			
+			// Always update the stats element with the current file/status
+			statsEl.setText(p.currentFile || (isIndexing ? 'Scanning vault…' : 'Not indexed yet'));
+
+			const lastIndexed = p.lastIndexedAt ?? this.plugin.settings.lastIndexedAt;
+			lastIndexedEl.toggleClass('is-invisible', !lastIndexed);
+
+			if (isIndexing) {
+				if (p.total > 0) {
+					progressCount.setText(`${p.done}/${p.total} files…`);
+					progressBar.value = p.done;
+					progressBar.max = p.total;
+				} else {
+					progressCount.setText('Starting…');
+					progressBar.value = 0;
+					progressBar.max = 1;
+				}
+			} else {
+				if (lastIndexed) {
+					lastIndexedEl.setText(`Last indexed: ${formatLastIndexed(lastIndexed)}`);
+				}
+			}
+
+			// 2. Embedding Model Card
+			embeddingDropdown.disabled = isIndexing;
+
+			const embStatus = p.embeddingStatus ?? this.plugin.brain?.embeddingStatus;
+			renderModelStatus(embeddingStatusEl, embStatus);
+
+			const isEmbDownloading = embStatus?.state === 'downloading';
+			embeddingProgressRow.toggleClass('is-invisible', !isEmbDownloading);
+			if (isEmbDownloading) {
+				const pct = embStatus?.progress ?? 0;
+				embeddingProgressBar.value = pct;
+				embeddingProgressPct.setText(`${pct}%`);
+			}
+
+			// 3. Reranking Model Card
+			const rrStatus = p.rerankerStatus ?? this.plugin.brain?.rerankerStatus;
+			renderModelStatus(rerankerStatusEl, rrStatus);
+
+			const isRrDownloading = rrStatus?.state === 'downloading';
+			rerankerProgressRow.toggleClass('is-invisible', !isRrDownloading);
+			if (isRrDownloading) {
+				const pct = rrStatus?.progress ?? 0;
+				rerankerProgressBar.value = pct;
+				rerankerProgressPct.setText(`${pct}%`);
+			}
+		};
+
+		this.unsubscribeProgress?.();
+		this.unsubscribeProgress = this.plugin.brain?.onProgress(updateUI);
 	}
 }
