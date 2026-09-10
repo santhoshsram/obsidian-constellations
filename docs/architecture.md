@@ -40,27 +40,33 @@ Alternatives in registry:
 - `Snowflake/snowflake-arctic-embed-xs` (384d, 512-token, 115 ch/s, MTEB 62.5 — fast/lightweight pick)
 - `Xenova/all-MiniLM-L6-v2` (384d, 256-token, 120 ch/s — classic standard)
 
-## Chunking pipeline (port of `accio.ai/md-parsers.py`)
+## Chunking pipeline
 
-Faithful TypeScript port of the hand-rolled regex pipeline, extended
-from 3 to **4 heading levels**:
+The chunking pipeline combines heading hierarchy with fine-grained semantic block parsing:
 
-1. `splitBySections(text, level=1)` — recursive regex split on
-   `#`…`####`, returning `(headingBreadcrumb, content)` tuples. Sections
-   shorter than `MIN_SECTION_LEN = 50` chars are dropped.
-2. Filename is prepended to the breadcrumb unless the first heading
-   already matches the filename. Empty breadcrumb entries (levels with
-   no heading) are filtered out when building the title context.
-3. `mdCleanup(text)` — `flattenTable` (pipe tables → space-joined
-   rows) → `stripMdMarkups` (headings, bold/italic, highlights, quotes,
-   bullets, links) → `stripSpaces` → `removeEmptyLines` → lowercase.
-4. `splitByMaxTokens(titles, text, tokenizer, MAX_TOKENS=2048)` —
-   recursive halving via `halvedByDelimiter` on `"\n\n"` → `"\n"` →
-   `". "` → `" "`, balancing token counts; truncate after 5 recursions.
-
-Token counting uses the model's own tokenizer (transformers.js). A
-`TokenCounter` interface allows a heuristic fallback (~4 chars/token)
-for tests and pre-model-load paths.
+1. **Heading splitting (`splitBySections`)**: Recursive regex split on
+   `#`…`####` (extended from accio.ai's 3 levels to 4), returning
+   `(headingBreadcrumb, content)` tuples.
+2. **Contextual breadcrumb**: The source filename is prepended to the
+   breadcrumb unless the first heading already matches it.
+3. **Block & paragraph parsing (`extractBlocks`)**:
+   Within each heading section (or across heading-less notes), text is
+   decomposed into discrete semantic blocks:
+   - **List item trees**: Top-level bullets (`- `, `* `, `\d+\. `) and
+     all their indented child items remain bound together as a unit of thought.
+   - **Pseudo-headings**: Standalone bold lines (`**Title**` on its own line)
+     are recognized as section boundaries and appended to the heading breadcrumb.
+     Inline bold labels (`**Note:** text...`) remain paragraph prose.
+   - **Prose paragraphs**: Split on blank lines (`\n\s*\n+`).
+   - **Line coordinates**: Every block tracks exact `startLine` and `endLine`
+     (0-indexed) relative to the source note for precise cursor matching and navigation.
+4. **Token grouping (`groupBlocks`)**: Small adjacent blocks (< 80 tokens)
+   are merged up to a target size of ~250 tokens so embeddings retain sufficient
+   context, while substantial blocks ($\ge 80$ tokens) remain standalone.
+5. **Text cleanup (`mdCleanup`)**: Pipe tables flattened, markdown markup
+   stripped, whitespace normalized, and text lowercased.
+6. **Token bounding (`splitByMaxTokens`)**: Oversized blocks (> 2,048 tokens)
+   are halved recursively on natural delimiters (`\n\n` → `\n` → `. ` → ` `).
 
 ## Index & storage
 
@@ -92,8 +98,8 @@ interface ChunkRecord {
   id: string;            // sha1 of cleanText — stable across edits/renames
   filePath: string;
   headingPath: string[]; // ["Note title", "Section", "Subsection"]
-  startLine: number;     // 1-indexed start line in source file
-  endLine: number;       // 1-indexed end line in source file
+  startLine?: number;    // 0-indexed start line in source file
+  endLine?: number;      // 0-indexed end line in source file
   vectorRow: number;     // row into vectors.bin
 }
 ```
@@ -129,27 +135,31 @@ Event-driven, never scheduled:
 
 ## Retrieval
 
-### Current Approach: Mean Vector Pooling
-1. Retrieve all stored chunk vectors for the active note: `vectors = index.vectorsForFile(filePath)`.
-2. Compute the **mean vector** (centroid) $\vec{q} = \frac{1}{N} \sum_{i=1}^N \vec{v}_i$.
-   - **Cost:** Zero model inference calls; instant sub-millisecond calculation from existing in-memory vectors.
-3. Cosine similarity of $\vec{q}$ vs. all chunk vectors across the vault (brute force).
-4. Exclude the active note itself (`excludeFile`); apply score threshold (`minScore`).
-5. Group by file, keep top 2–3 chunks per note, and rank candidate notes by their best chunk score (`bestScore`).
+The plugin provides three matching modes tailored to different note structures and research workflows:
+
+### 1. Detailed (MaxSim / All-Pairs Matching) — Default
+- **How it works**: Compares every chunk $\vec{v}_k$ of the active note individually against all chunk vectors in the vault:
+  $$\text{Score}(\text{doc}) = \max_{c \in \text{active}} \max_{c' \in \text{doc}} \text{cosine}(c, c')$$
+- **Attribution**: Preserves both the source section (`matchedSourceHeading`) and the target section (`matchedHeading`, `startLine`), pinpointing the exact idea connecting two notes.
+- **Cost**: Sub-millisecond matrix operations reusing stored vector rows with zero embedding inference overhead.
+- **Best for**: Multi-topic notes, daily logs, and sprawling braindumps. Avoids the "topic dilution" trap where diverse ideas average out to an unrepresentative centroid.
+
+### 2. Focused (Cursor / Active Section Context)
+- **How it works**: Pinpoints the user's immediate editing or reading focus via editor cursor coordinates (`editor.getCursor().line`).
+- **Resolution**:
+  1. Identifies the specific chunk bounding the cursor line (`chunk.startLine <= cursorLine && cursorLine <= chunk.endLine`).
+  2. Falls back to matching the active heading if outside block ranges.
+  3. Queries using only that chunk's vector.
+- **Best for**: Exploring connections to a single paragraph, quote, or sub-idea while reading or actively writing in a long note.
+
+### 3. Broad (Mean Vector Pooling)
+- **How it works**: Computes the document centroid $\vec{q} = \frac{1}{N} \sum_{i=1}^N \vec{v}_i$ across all chunks in the note and runs brute-force cosine similarity against the vault.
+- **Best for**: Short, coherent, single-topic notes where overall thematic overlap is desired rather than section-specific links.
 
 ### Retrieval Enhancements (Planned)
 
-1. **Active Section / Cursor-Context Matching**:
-   - Instead of querying with the entire document's centroid, query using only the chunk corresponding to the user's active cursor line (`cursor.line`) or current section heading.
-   - **Benefit:** Solves topic dilution when notes are long or heterogeneous (e.g. daily notes or multi-topic essays), surfacing connections hyper-relevant to the exact paragraph being read or edited.
-
-2. **Chunk-to-Chunk MaxSim (All-Pairs Matching)**:
-   - For a multi-topic note, evaluate each chunk $\vec{v}_k$ of the active note individually against all vault chunks:
-     $$\text{Score}(\text{doc}) = \max_{c \in \text{active}} \max_{c' \in \text{doc}} \text{cosine}(c, c')$$
-   - **Benefit:** Allows a note with 5 distinct concepts to surface the best connections for *each* concept independently, without averaging them into an unrepresentative middle ground. Still reuses cached chunk vectors with zero inference overhead.
-
-3. **Hybrid Search (Lexical BM25 + Dense Vectors)**:
-   - Combine sparse term matching (BM25 for exact IDs, technical terms, code symbols) with dense semantic embeddings using Reciprocal Rank Fusion (RRF).
+- **Hybrid Search (Lexical BM25 + Dense Vectors)**:
+  Combine sparse term matching (BM25 for exact IDs, technical terms, code symbols) with dense semantic embeddings using Reciprocal Rank Fusion (RRF).
 
 
 ## UI (Phase 2, mocked in HTML first)
