@@ -26,7 +26,20 @@
 
 .brain-progress-bar {
 	flex: 1;
-	height: 10px;
+	height: 8px;
+	accent-color: var(--interactive-accent);
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.brain-progress-bar::-webkit-progress-bar {
+	background-color: var(--background-primary);
+	border-radius: 4px;
+}
+
+.brain-progress-bar::-webkit-progress-value {
+	background-color: var(--interactive-accent);
+	border-radius: 4px;
 }
 
 .brain-progress-file {
