@@ -30,6 +30,7 @@ import {
 import { relatedNotes } from './search/related';
 import type { RelatedNote } from './search/related';
 import { rerankCandidateChunks } from './search/rerank';
+import { RETRIEVAL_CONFIG } from './config';
 import { debounce } from './utils/debounce';
 import { ConsoleLogger } from './utils/logger';
 import { BufferedLogFile } from './utils/file-log';
@@ -343,11 +344,14 @@ export class Brain {
 		// 2. Stage 2: Cross-encoder reranking (if enabled and loaded)
 		if (this.reranker && this.plugin.settings.rerankerEnabled !== false) {
 			const vault = new ObsidianVaultSource(this.plugin.app);
+			const topK =
+				this.plugin.settings.rerankCandidatePoolSize ??
+				RETRIEVAL_CONFIG.stage1CandidatePoolSize;
 			const reranked = await rerankCandidateChunks({
 				candidates,
 				fileReader: vault,
 				reranker: this.reranker,
-				topK: 50,
+				topK,
 			});
 			return relatedNotes(reranked, {
 				excludeFile: filePath,

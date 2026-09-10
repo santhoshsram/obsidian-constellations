@@ -4,6 +4,7 @@
 
 import type { ScoredChunk } from '../index/chunk-index';
 import type { Reranker, TextPair } from '../embed/reranker';
+import { RETRIEVAL_CONFIG } from '../config';
 
 export interface FileReader {
 	read(path: string): Promise<string>;
@@ -48,7 +49,7 @@ export async function rerankCandidateChunks(
 		candidates,
 		fileReader,
 		reranker,
-		topK = 50,
+		topK = RETRIEVAL_CONFIG.stage1CandidatePoolSize,
 		defaultQueryText,
 		fallbackOnError = true,
 	} = options;

@@ -39,7 +39,10 @@ describe('Brain.relatedTo with reranker', () => {
 		gamma: [0.8, 0.4], // vector similarity: ~0.89
 	};
 
-	async function setupBrain(rerankerEnabled = true): Promise<Brain> {
+	async function setupBrain(
+		rerankerEnabled = true,
+		extraSettings: Partial<ObsidianBrainPlugin['settings']> = {},
+	): Promise<Brain> {
 		const store = new BruteForceVectorStore(2);
 		const index = new ChunkIndex(store);
 
@@ -85,6 +88,7 @@ describe('Brain.relatedTo with reranker', () => {
 				minScore: 0.1,
 				debugLogging: false,
 				lastIndexedAt: null,
+				...extraSettings,
 			},
 			setStatus: vi.fn(),
 			saveSettings: vi.fn(),
@@ -150,5 +154,20 @@ describe('Brain.relatedTo with reranker', () => {
 		// Should still be ordered by vector score: Beta first
 		expect(results[0]?.filePath).toBe(fileB);
 		expect(rerankPairsMock).not.toHaveBeenCalled();
+	});
+
+	it('respects custom rerankCandidatePoolSize from settings or config', async () => {
+		const brain = await setupBrain(true, { rerankCandidatePoolSize: 1 });
+
+		const rerankPairsMock = vi.fn(async (_pairs: TextPair[]) => [0.99]);
+		const mockReranker: Reranker = {
+			rerankPairs: rerankPairsMock,
+			rerank: vi.fn(),
+		};
+		brain.setReranker(mockReranker);
+
+		await brain.relatedTo(fileA);
+		// Only 1 candidate was sent to reranker because rerankCandidatePoolSize was 1
+		expect(rerankPairsMock.mock.calls[0]?.[0]).toHaveLength(1);
 	});
 });
