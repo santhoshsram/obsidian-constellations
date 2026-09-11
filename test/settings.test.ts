@@ -19,6 +19,10 @@ describe('settings', () => {
 		expect(DEFAULT_SETTINGS.retrievalStrategy).toBe('maxsim');
 	});
 
+	it('defaults openInNewTab to true', () => {
+		expect(DEFAULT_SETTINGS.openInNewTab).toBe(true);
+	});
+
 	it('formats null or undefined timestamp as Never', () => {
 		expect(formatLastIndexed(null)).toBe('Never');
 		expect(formatLastIndexed(undefined)).toBe('Never');

@@ -1,31 +1,15 @@
-import { MarkdownView, Notice, Plugin, TFile } from 'obsidian';
+import { Plugin, type WorkspaceLeaf } from 'obsidian';
 import {
 	DEFAULT_SETTINGS,
 	ObsidianBrainSettings,
 	ObsidianBrainSettingTab,
 } from './settings';
 import { Brain } from './brain';
-import type { RetrievalStrategy } from './search/retrieval';
-
-function getActiveHeadingAtCursor(
-	plugin: ObsidianBrainPlugin,
-	file: TFile,
-	cursorLine: number,
-): string | undefined {
-	const cache = plugin.app.metadataCache.getFileCache(file);
-	if (!cache?.headings || cache.headings.length === 0) {
-		return undefined;
-	}
-	let activeHeading: string | undefined;
-	for (const h of cache.headings) {
-		if (h.position.start.line <= cursorLine) {
-			activeHeading = h.heading;
-		} else {
-			break;
-		}
-	}
-	return activeHeading;
-}
+import { setPluginName } from './plugin-name';
+import {
+	RelatedNotesView,
+	VIEW_TYPE_RELATED,
+} from './ui/related-notes-view';
 
 export default class ObsidianBrainPlugin extends Plugin {
 	settings!: ObsidianBrainSettings;
@@ -33,6 +17,7 @@ export default class ObsidianBrainPlugin extends Plugin {
 	private statusBarEl!: HTMLElement;
 
 	async onload() {
+		setPluginName(this.manifest.name);
 		await this.loadSettings();
 
 		this.brain = new Brain(this);
@@ -40,6 +25,11 @@ export default class ObsidianBrainPlugin extends Plugin {
 		this.setStatus('');
 
 		this.addSettingTab(new ObsidianBrainSettingTab(this.app, this));
+
+		this.registerView(
+			VIEW_TYPE_RELATED,
+			(leaf) => new RelatedNotesView(leaf, this),
+		);
 
 		this.addCommand({
 			id: 'reindex-notes',
@@ -50,33 +40,56 @@ export default class ObsidianBrainPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: 'find-related-notes',
-			name: 'Find notes related to the current note',
-			callback: () => this.showRelatedNotes(),
+			id: 'show-related-notes',
+			name: 'Show related notes',
+			callback: () => this.showRelatedNotesView(),
 		});
 
-		this.addCommand({
-			id: 'find-related-notes-maxsim',
-			name: 'Find related notes (detailed)',
-			callback: () => this.showRelatedNotes('maxsim'),
-		});
-
-		this.addCommand({
-			id: 'find-related-notes-cursor',
-			name: 'Find related notes (focused)',
-			callback: () => this.showRelatedNotes('cursor'),
-		});
-
-		this.addCommand({
-			id: 'find-related-notes-mean',
-			name: 'Find related notes (broad)',
-			callback: () => this.showRelatedNotes('mean'),
-		});
-
-		// Defer model loading and indexing until the workspace is ready.
+		// Defer model loading, indexing, and sidebar view initialization until workspace is ready.
 		this.app.workspace.onLayoutReady(() => {
 			void this.startBrain();
+			void this.initSidebarLeaf();
 		});
+	}
+
+	/** Ensure a sidebar leaf exists for the related notes view. */
+	async ensureSidebarLeaf(): Promise<WorkspaceLeaf | null> {
+		const existing =
+			this.app.workspace.getLeavesOfType(VIEW_TYPE_RELATED)[0];
+		if (existing) {
+			return existing;
+		}
+		const rightLeaf = this.app.workspace.getRightLeaf(false);
+		if (rightLeaf) {
+			await rightLeaf.setViewState({
+				type: VIEW_TYPE_RELATED,
+				active: true,
+			});
+			return rightLeaf;
+		}
+		return null;
+	}
+
+	/** Reveal or create the related notes view leaf. */
+	async showRelatedNotesView(): Promise<void> {
+		const leaf = await this.ensureSidebarLeaf();
+		if (leaf) {
+			await this.app.workspace.revealLeaf(leaf);
+		}
+	}
+
+	/** Initialize the sidebar leaf in the background if not already present. */
+	private async initSidebarLeaf(): Promise<void> {
+		const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_RELATED);
+		if (leaves.length === 0) {
+			const rightLeaf = this.app.workspace.getRightLeaf(false);
+			if (rightLeaf) {
+				await rightLeaf.setViewState({
+					type: VIEW_TYPE_RELATED,
+					active: false,
+				});
+			}
+		}
 	}
 
 	/** Start model load + sync or reindex if already running. */
@@ -99,74 +112,6 @@ export default class ObsidianBrainPlugin extends Plugin {
 	/** Recreate the console logger when the debug-logging setting changes. */
 	refreshLogger() {
 		this.brain.refreshLogger();
-	}
-
-	private async showRelatedNotes(strategyOverride?: RetrievalStrategy): Promise<void> {
-		if (!this.brain.isReady) {
-			const embState = this.brain.embeddingStatus?.state;
-			const rerankState = this.brain.rerankerStatus?.state;
-			if (embState === 'downloading' || rerankState === 'downloading') {
-				new Notice('Obsidian brain is downloading models — try again shortly.');
-			} else if (embState === 'loading' || rerankState === 'loading') {
-				new Notice('Obsidian brain is loading models — try again shortly.');
-			} else {
-				new Notice('Obsidian brain is still indexing — try again shortly.');
-			}
-			return;
-		}
-		const file = this.app.workspace.getActiveFile();
-		if (!file) {
-			new Notice('No active note.');
-			return;
-		}
-
-		const strategy = strategyOverride ?? this.settings.retrievalStrategy;
-		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-		const cursorLine = activeView?.editor?.getCursor()?.line;
-		const cursorHeading =
-			typeof cursorLine === 'number'
-				? getActiveHeadingAtCursor(this, file, cursorLine)
-				: undefined;
-
-		const related = await this.brain.relatedTo(file.path, {
-			strategy,
-			cursorLine,
-			cursorHeading,
-		});
-
-		if (related.length === 0) {
-			new Notice('No related notes found.');
-			return;
-		}
-
-		const strategyLabels: Record<RetrievalStrategy, string> = {
-			maxsim: 'Detailed',
-			cursor: 'Focused',
-			mean: 'Broad',
-		};
-		const label = strategyLabels[strategy] ?? strategy;
-
-		// Headless validation for Phase 1: top results in a persistent Notice.
-		// (The Phase 2 sidebar UI replaces this.)
-		const lines = related
-			.slice(0, 5)
-			.map((n, i) => {
-				const score = n.bestScore.toFixed(2);
-				const sourceHeading = n.matchedSourceHeading
-					? ` [matched: ${n.matchedSourceHeading}]`
-					: '';
-				const topChunk = n.chunks[0];
-				const targetHeading =
-					topChunk && topChunk.record.headingPath.length > 1
-						? `\n   ↳ section: "${topChunk.record.headingPath[topChunk.record.headingPath.length - 1]}"`
-						: '';
-				return `${i + 1}. ${score}  ${n.filePath}${sourceHeading}${targetHeading}`;
-			})
-			.join('\n');
-		new Notice(
-			`Obsidian brain — related notes (${label}):\n${lines}\n\n(Click to dismiss)`,
-			0,
-		);
 	}
 
 	async loadSettings() {

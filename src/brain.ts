@@ -40,6 +40,7 @@ import { ConsoleLogger } from './utils/logger';
 import { BufferedLogFile } from './utils/file-log';
 import { sha1Hex } from './index/hasher';
 import type { ModelStatus } from './settings';
+import { pluginName } from './plugin-name';
 
 const REINDEX_DEBOUNCE_MS = 2000;
 const SAVE_DEBOUNCE_MS = 5000;
@@ -173,7 +174,7 @@ export class Brain {
 				{ kind: 'rerank' },
 				e,
 			);
-			console.warn('Obsidian brain: reranker model failed to load', e);
+			console.warn(`${pluginName()}: reranker model failed to load`, e);
 		}
 	}
 
@@ -274,10 +275,10 @@ export class Brain {
 			this.setEmbeddingStatus({ state: 'error', error: String(e) });
 			this.plugin.setStatus('Brain: model failed to load');
 			new Notice(
-				'Obsidian brain: embedding model failed to load. Check the console (Cmd-Option-I) for details.',
+				`${pluginName()}: embedding model failed to load. Check the console (Cmd-Option-I) for details.`,
 				0,
 			);
-			console.error('Obsidian brain: model load failed', e);
+			console.error(`${pluginName()}: model load failed`, e);
 			return;
 		}
 		this.embedder = new TransformersEmbedder(pipe, model);
@@ -323,10 +324,10 @@ export class Brain {
 			});
 			this.plugin.setStatus('Brain: indexing failed');
 			new Notice(
-				'Obsidian brain: indexing failed. Check the console (Cmd-Option-I) for details.',
+				`${pluginName()}: indexing failed. Check the console (Cmd-Option-I) for details.`,
 				0,
 			);
-			console.error('Obsidian brain: indexing failed', e);
+			console.error(`${pluginName()}: indexing failed`, e);
 			return;
 		}
 		this.ready = true;
@@ -404,7 +405,7 @@ export class Brain {
 				currentFile: 'Reindexing failed',
 			});
 			this.plugin.setStatus('Brain: reindexing failed');
-			console.error('Obsidian brain: reindex failed', e);
+			console.error(`${pluginName()}: reindex failed`, e);
 		}
 	}
 
@@ -546,7 +547,7 @@ export class Brain {
 		} catch (e) {
 			// File logging is best-effort; console logging still works.
 			this.logger.info('log file sink failed to attach');
-			console.warn('Obsidian brain: brain.log unavailable', e);
+			console.warn(`${pluginName()}: brain.log unavailable`, e);
 		}
 	}
 
@@ -674,7 +675,7 @@ export class Brain {
 			this.plugin.setStatus('');
 		} catch (e) {
 			this.plugin.setStatus('');
-			console.warn(`Obsidian brain: failed to index ${path}`, e);
+			console.warn(`${pluginName()}: failed to index ${path}`, e);
 		}
 	}
 

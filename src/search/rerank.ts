@@ -6,6 +6,7 @@ import type { ScoredChunk } from '../index/chunk-index';
 import type { Reranker, TextPair, BatchTimingInfo } from '../embed/reranker';
 import { RETRIEVAL_CONFIG } from '../config';
 import type { Logger } from '../utils/logger';
+import { pluginName } from '../plugin-name';
 
 export interface FileReader {
 	read(path: string): Promise<string>;
@@ -93,7 +94,7 @@ export async function rerankCandidateChunks(
 	} catch (e) {
 		if (fallbackOnError) {
 			logger?.warn?.('[rerank] File read failed during reranking', e);
-			console.warn('Obsidian brain: file read failed during reranking', e);
+			console.warn(`${pluginName()}: file read failed during reranking`, e);
 			return pool;
 		}
 		throw e;
@@ -190,7 +191,7 @@ export async function rerankCandidateChunks(
 			`[rerank] Cross-encoder reranking failed: ${errStr}`,
 			e,
 		);
-		console.warn('Obsidian brain: cross-encoder reranking failed, falling back to vector scores', e);
+		console.warn(`${pluginName()}: cross-encoder reranking failed, falling back to vector scores`, e);
 		if (fallbackOnError) {
 			return pool;
 		}

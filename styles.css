@@ -183,3 +183,118 @@
 	flex-shrink: 0;
 }
 
+/* Related notes sidebar view */
+.brain-empty-state-container {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 140px;
+	padding: 24px 16px;
+	text-align: center;
+}
+
+.brain-empty-state {
+	color: var(--text-muted);
+	font-size: 0.88em;
+	line-height: 1.4;
+}
+
+.brain-related-notes {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 6px 0;
+}
+
+.brain-related-note-card {
+	border-bottom: 1px solid var(--background-modifier-border);
+	padding: 8px 10px;
+}
+
+.brain-related-note-card:last-child {
+	border-bottom: none;
+}
+
+.brain-related-note-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	cursor: pointer;
+	padding: 3px 4px;
+	border-radius: 4px;
+	transition: background-color 0.1s ease;
+}
+
+.brain-related-note-header:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.brain-related-note-icon {
+	display: inline-flex;
+	align-items: center;
+	color: var(--interactive-accent);
+	flex-shrink: 0;
+}
+
+.brain-related-note-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+.brain-related-note-title {
+	font-weight: 500;
+	font-size: 0.88em;
+	color: var(--text-normal);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	flex: 1;
+}
+
+.brain-related-note-sections {
+	margin-left: 10px;
+	padding-left: 8px;
+	border-left: 1px solid var(--background-modifier-border);
+	margin-top: 4px;
+	margin-bottom: 4px;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.brain-related-section-item {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	cursor: pointer;
+	padding: 2px 4px;
+	border-radius: 4px;
+	font-size: 0.82em;
+	color: var(--text-muted);
+	transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+.brain-related-section-item:hover {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.brain-related-section-icon {
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+	opacity: 0.7;
+}
+
+.brain-related-section-icon svg {
+	width: 11px;
+	height: 11px;
+}
+
+.brain-related-section-text {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	flex: 1;
+}
+

@@ -17,6 +17,8 @@ export interface ObsidianBrainSettings {
 	/** Whether cross-encoder reranking is enabled. */
 	rerankerEnabled: boolean;
 
+	/** Whether to open related notes in a new tab or the current tab. */
+	openInNewTab: boolean;
 	/** Default retrieval strategy for related notes. */
 	retrievalStrategy: RetrievalStrategy;
 	/** Max related notes shown for the active note. */
@@ -36,6 +38,7 @@ export const DEFAULT_SETTINGS: ObsidianBrainSettings = {
 	rerankerModel: DEFAULT_RERANKER.modelId,
 	rerankerEnabled: true,
 
+	openInNewTab: true,
 	retrievalStrategy: 'maxsim',
 	maxRelatedNotes: 10,
 	maxChunksPerNote: 3,
@@ -273,42 +276,17 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 			cls: 'brain-model-progress-pct',
 		});
 
-		const strategyDesc = createFragment((el) => {
-			el.createDiv({
-				text: 'Choose how Obsidian Brain finds related notes:',
-			});
-			const list = el.createEl('ul');
-			const li1 = list.createEl('li');
-			li1.createEl('strong', { text: 'Detailed: ' });
-			li1.appendText(
-				'Retrieves best matches for each section in the note and then picks the top matches across these.',
-			);
-			const li2 = list.createEl('li');
-			li2.createEl('strong', { text: 'Focused: ' });
-			li2.appendText(
-				'Retrieves the best matches for the section or paragraph under your cursor.',
-			);
-			const li3 = list.createEl('li');
-			li3.createEl('strong', { text: 'Broad: ' });
-			li3.appendText(
-				'Retrieves the best matches using an overall summary of the full note.',
-			);
-		});
-
 		new Setting(containerEl)
-			.setName('Matching mode')
-			.setDesc(strategyDesc)
-			.addDropdown((dropdown) => {
-				dropdown
-					.addOption('maxsim', 'Detailed (recommended)')
-					.addOption('cursor', 'Focused')
-					.addOption('mean', 'Broad')
-					.setValue(this.plugin.settings.retrievalStrategy ?? 'maxsim')
+			.setName('Open related notes in new tab')
+			.setDesc('Open related notes in a new tab instead of the current tab.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.openInNewTab)
 					.onChange(async (value) => {
-						this.plugin.settings.retrievalStrategy = value as RetrievalStrategy;
+						this.plugin.settings.openInNewTab = value;
 						await this.plugin.saveSettings();
-					});
-			});
+					}),
+			);
 
 		new Setting(containerEl)
 			.setName('Related notes')

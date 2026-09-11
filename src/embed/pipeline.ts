@@ -30,6 +30,7 @@ delete (globalThis as Record<symbol, unknown>)[Symbol.for('onnxruntime')];
 
 import type { EmbeddingModelSpec, RerankerModelSpec } from './models';
 import type { RerankPairsFn, TextPair } from './reranker';
+import { pluginName } from '../plugin-name';
 
 export interface PipelineProgress {
 	status: string;
@@ -132,7 +133,7 @@ export async function createEmbeddingPipeline(
 	// Report WebGPU availability so we know whether WASM is a fallback or
 	// the only option (WASM single-thread is slow).
 	const gpuStatus = await probeWebgpu();
-	console.debug(`Obsidian brain: embedding model webgpu probe=${gpuStatus}`);
+	console.debug(`${pluginName()}: embedding model webgpu probe=${gpuStatus}`);
 
 	const fallbacks = buildFallbackChain(model, gpuStatus === 'usable');
 	let lastError: unknown;
@@ -143,11 +144,11 @@ export async function createEmbeddingPipeline(
 				progress_callback: onProgress,
 			});
 			const device: DeviceMode = cfg.device === 'webgpu' ? 'webgpu' : 'wasm';
-			console.debug(`Obsidian brain: embedding model using device=${device}`);
+			console.debug(`${pluginName()}: embedding model using device=${device}`);
 			return { pipe, device };
 		} catch (e) {
 			console.warn(
-				`Obsidian brain: pipeline failed with config ${JSON.stringify(cfg)}`,
+				`${pluginName()}: pipeline failed with config ${JSON.stringify(cfg)}`,
 				e,
 			);
 			lastError = e;
@@ -164,7 +165,7 @@ export async function createRerankerPipeline(
 	const { AutoTokenizer, AutoModelForSequenceClassification } = transformers;
 
 	const gpuStatus = await probeWebgpu();
-	console.debug(`Obsidian brain: reranker webgpu probe=${gpuStatus}`);
+	console.debug(`${pluginName()}: reranker webgpu probe=${gpuStatus}`);
 
 	const tokenizer = await AutoTokenizer.from_pretrained(model.modelId, {
 		progress_callback: onProgress,
@@ -188,7 +189,7 @@ export async function createRerankerPipeline(
 				},
 			);
 			const device: DeviceMode = cfg.device === 'webgpu' ? 'webgpu' : 'wasm';
-			console.debug(`Obsidian brain: reranker using device=${device}`);
+			console.debug(`${pluginName()}: reranker using device=${device}`);
 
 			const rerankPairs: RerankPairsFn = async (
 				pairs: TextPair[],
@@ -211,7 +212,7 @@ export async function createRerankerPipeline(
 					const outputs = (await (classifier as (inp: unknown) => Promise<{ logits?: { data: ArrayLike<number> } }>)(inputs));
 					const inferMs = performance.now() - tInferStart;
 
-					console.debug('Obsidian brain: reranker outputs keys:', outputs ? Object.keys(outputs) : null);
+					console.debug(`${pluginName()}: reranker outputs keys:`, outputs ? Object.keys(outputs) : null);
 
 					onTiming?.({ tokenizeMs, inferMs });
 
@@ -224,7 +225,7 @@ export async function createRerankerPipeline(
 					}
 					return scores;
 				} catch (err) {
-					console.error('Obsidian brain: rerankPairs execution failed', err);
+					console.error(`${pluginName()}: rerankPairs execution failed`, err);
 					throw err;
 				}
 			};
@@ -232,7 +233,7 @@ export async function createRerankerPipeline(
 			return { rerankPairs, device };
 		} catch (e) {
 			console.warn(
-				`Obsidian brain: reranker pipeline failed with config ${JSON.stringify(cfg)}`,
+				`${pluginName()}: reranker pipeline failed with config ${JSON.stringify(cfg)}`,
 				e,
 			);
 			lastError = e;
@@ -277,7 +278,7 @@ export async function isModelCached(modelId: string): Promise<boolean> {
  */
 export async function extractLogitsAsync(logits: unknown): Promise<ArrayLike<number>> {
 	if (!logits) {
-		console.error('Obsidian brain: extractLogitsAsync received falsy logits:', logits);
+		console.error(`${pluginName()}: extractLogitsAsync received falsy logits:`, logits);
 		throw new Error('Model outputs missing logits');
 	}
 

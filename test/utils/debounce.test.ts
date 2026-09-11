@@ -40,4 +40,13 @@ describe('debounce', () => {
 		vi.advanceTimersByTime(100);
 		expect(fn).toHaveBeenCalledWith(2);
 	});
+
+	it('cancels any pending invocation when cancel is called', () => {
+		const fn = vi.fn();
+		const debounced = debounce(fn, 100);
+		debounced();
+		debounced.cancel();
+		vi.advanceTimersByTime(100);
+		expect(fn).not.toHaveBeenCalled();
+	});
 });
