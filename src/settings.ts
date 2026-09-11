@@ -31,6 +31,15 @@ export interface ObsidianBrainSettings {
 	debugLogging: boolean;
 	/** Timestamp (ms) of the last successful indexing run. */
 	lastIndexedAt: number | null;
+
+	/** Number of Hop 1 related notes to include in the constellation graph. */
+	graphHop1Count: number;
+	/** Number of Hop 2 related notes per Hop 1 note in the constellation graph. */
+	graphHop2Count: number;
+	/** Minimum cosine similarity threshold for edges in the constellation graph. */
+	graphSimilarityThreshold: number;
+	/** Preferred companion view mode in sidebar (list or graph). */
+	sidebarViewMode: 'list' | 'graph';
 }
 
 export const DEFAULT_SETTINGS: ObsidianBrainSettings = {
@@ -45,6 +54,11 @@ export const DEFAULT_SETTINGS: ObsidianBrainSettings = {
 	minScore: 0.45,
 	debugLogging: false,
 	lastIndexedAt: null,
+
+	graphHop1Count: 10,
+	graphHop2Count: 5,
+	graphSimilarityThreshold: 0.75,
+	sidebarViewMode: 'list',
 };
 
 export interface ModelStatus {
@@ -331,6 +345,50 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 					.setDynamicTooltip()
 					.onChange(async (value) => {
 						this.plugin.settings.minScore = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Context graph 1-hop notes')
+			.setDesc('Number of top related notes connected directly to the seed.')
+			.addSlider((slider) =>
+				slider
+					.setLimits(3, 25, 1)
+					.setValue(this.plugin.settings.graphHop1Count)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.graphHop1Count = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Context graph 2-hop notes')
+			.setDesc('Number of 2-hop related notes expanded per 1-hop note.')
+			.addSlider((slider) =>
+				slider
+					.setLimits(1, 15, 1)
+					.setValue(this.plugin.settings.graphHop2Count)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.graphHop2Count = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Context graph similarity threshold')
+			.setDesc(
+				'Minimum cosine similarity for edges drawn between notes in the graph.',
+			)
+			.addSlider((slider) =>
+				slider
+					.setLimits(0.5, 0.95, 0.05)
+					.setValue(this.plugin.settings.graphSimilarityThreshold)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.graphSimilarityThreshold = value;
 						await this.plugin.saveSettings();
 					}),
 			);

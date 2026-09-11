@@ -16,6 +16,7 @@ describe('ObsidianBrainPlugin', () => {
 	let registeredCommands: Command[];
 	let registeredViews: Record<string, unknown>;
 	let mockWorkspace: MockWorkspace;
+	let addRibbonIconSpy: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
 		registeredCommands = [];
@@ -54,6 +55,8 @@ describe('ObsidianBrainPlugin', () => {
 		plugin.loadData = vi.fn().mockResolvedValue({});
 		plugin.addSettingTab = vi.fn();
 		plugin.addStatusBarItem = vi.fn().mockReturnValue({ setText: vi.fn() });
+		addRibbonIconSpy = vi.fn().mockReturnValue({});
+		plugin.addRibbonIcon = addRibbonIconSpy;
 	});
 
 	it('initializes plugin display name from manifest in onload', async () => {
@@ -66,18 +69,28 @@ describe('ObsidianBrainPlugin', () => {
 		expect(registeredViews[VIEW_TYPE_RELATED]).toBeDefined();
 	});
 
-	it('registers consolidated commands and removes old Notice commands', async () => {
+	it('registers consolidated commands including open-context-graph', async () => {
 		await plugin.onload();
 
 		const commandIds = registeredCommands.map((c) => c.id);
 		expect(commandIds).toContain('reindex-notes');
 		expect(commandIds).toContain('show-related-notes');
+		expect(commandIds).toContain('open-context-graph');
 
 		// Old notice commands should no longer exist
 		expect(commandIds).not.toContain('find-related-notes');
 		expect(commandIds).not.toContain('find-related-notes-maxsim');
 		expect(commandIds).not.toContain('find-related-notes-cursor');
 		expect(commandIds).not.toContain('find-related-notes-mean');
+	});
+
+	it('registers ribbon icon for Open Context Graph', async () => {
+		await plugin.onload();
+		expect(addRibbonIconSpy).toHaveBeenCalledWith(
+			'brain-circuit',
+			'Open context graph',
+			expect.any(Function),
+		);
 	});
 
 	it('reveals existing leaf when show-related-notes executes', async () => {

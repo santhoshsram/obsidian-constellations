@@ -10,6 +10,7 @@ import {
 	RelatedNotesView,
 	VIEW_TYPE_RELATED,
 } from './ui/related-notes-view';
+import { ContextGraphModal } from './ui/graph/context-graph-modal';
 
 export default class ObsidianBrainPlugin extends Plugin {
 	settings!: ObsidianBrainSettings;
@@ -23,6 +24,10 @@ export default class ObsidianBrainPlugin extends Plugin {
 		this.brain = new Brain(this);
 		this.statusBarEl = this.addStatusBarItem();
 		this.setStatus('');
+
+		this.addRibbonIcon('brain-circuit', 'Open context graph', () => {
+			new ContextGraphModal(this.app, this).open();
+		});
 
 		this.addSettingTab(new ObsidianBrainSettingTab(this.app, this));
 
@@ -43,6 +48,14 @@ export default class ObsidianBrainPlugin extends Plugin {
 			id: 'show-related-notes',
 			name: 'Show related notes',
 			callback: () => this.showRelatedNotesView(),
+		});
+
+		this.addCommand({
+			id: 'open-context-graph',
+			name: 'Open context graph',
+			callback: () => {
+				new ContextGraphModal(this.app, this).open();
+			},
 		});
 
 		// Defer model loading, indexing, and sidebar view initialization until workspace is ready.

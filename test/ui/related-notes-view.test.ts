@@ -18,6 +18,8 @@ describe('RelatedNotesView', () => {
 	let mockOpenLinkText: ReturnType<typeof vi.fn>;
 	let mockWorkspaceOn: ReturnType<typeof vi.fn>;
 	let mockRelatedTo: ReturnType<typeof vi.fn>;
+	let mockGetGraphData: ReturnType<typeof vi.fn>;
+	let mockSaveSettings: ReturnType<typeof vi.fn>;
 
 	let brainIsReady = true;
 	let brainProgress: BrainProgress = {
@@ -52,13 +54,22 @@ describe('RelatedNotesView', () => {
 		mockWorkspaceOn = vi.fn();
 		mockRelatedTo = vi.fn().mockResolvedValue([]);
 
+		mockGetGraphData = vi.fn().mockResolvedValue({
+			seed: { type: 'note', path: 'Notes/Alpha.md' },
+			nodes: [{ id: 'Notes/Alpha.md', label: 'Alpha', isSeed: true, hop: 0, radius: 10 }],
+			edges: [],
+		});
+
 		mockLeaf = new WorkspaceLeaf();
+		mockSaveSettings = vi.fn().mockResolvedValue(undefined);
 		const pluginStub = {
+			saveSettings: mockSaveSettings,
 			settings: {
 				openInNewTab: true,
 				retrievalStrategy: 'maxsim' as const,
 				maxRelatedNotes: 10,
 				maxChunksPerNote: 3,
+				sidebarViewMode: 'list' as const,
 			},
 			brain: {
 				get isReady() {
@@ -80,6 +91,7 @@ describe('RelatedNotesView', () => {
 					};
 				}),
 				relatedTo: mockRelatedTo,
+				getGraphData: mockGetGraphData,
 			},
 			app: {
 				workspace: {
@@ -446,5 +458,33 @@ describe('RelatedNotesView', () => {
 		await vi.advanceTimersByTimeAsync(0);
 
 		expect(mockRelatedTo).toHaveBeenCalledTimes(1);
+	});
+
+	it('renders view toggle buttons and switches to graph mode', async () => {
+		const view = new RelatedNotesView(mockLeaf, mockPlugin);
+		await view.refresh();
+
+		const toggleGroup = view.contentEl.querySelector('.brain-view-toggle-group');
+		expect(toggleGroup).toBeDefined();
+
+		const toggles = view.contentEl.querySelectorAll('.brain-view-toggle');
+		expect(toggles.length).toBe(2);
+
+		const graphToggle = toggles[1] as unknown as { click?: () => void; textContent?: string } | undefined;
+		expect(graphToggle?.textContent).toBe('Graph');
+
+		// Click Graph toggle
+		graphToggle?.click?.();
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(mockPlugin.settings.sidebarViewMode).toBe('graph');
+		expect(mockSaveSettings).toHaveBeenCalled();
+		expect(mockGetGraphData).toHaveBeenCalledWith({
+			type: 'note',
+			path: 'Notes/Alpha.md',
+		});
+
+		const canvas = view.contentEl.querySelector('canvas');
+		expect(canvas).toBeDefined();
 	});
 });

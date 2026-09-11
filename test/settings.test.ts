@@ -23,6 +23,13 @@ describe('settings', () => {
 		expect(DEFAULT_SETTINGS.openInNewTab).toBe(true);
 	});
 
+	it('defaults graph settings correctly', () => {
+		expect(DEFAULT_SETTINGS.graphHop1Count).toBe(10);
+		expect(DEFAULT_SETTINGS.graphHop2Count).toBe(5);
+		expect(DEFAULT_SETTINGS.graphSimilarityThreshold).toBe(0.75);
+		expect(DEFAULT_SETTINGS.sidebarViewMode).toBe('list');
+	});
+
 	it('formats null or undefined timestamp as Never', () => {
 		expect(formatLastIndexed(null)).toBe('Never');
 		expect(formatLastIndexed(undefined)).toBe('Never');

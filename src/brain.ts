@@ -41,6 +41,12 @@ import { BufferedLogFile } from './utils/file-log';
 import { sha1Hex } from './index/hasher';
 import type { ModelStatus } from './settings';
 import { pluginName } from './plugin-name';
+import {
+	buildContextGraph,
+	type GraphSeed,
+	type GraphData,
+	type GraphBuildOptions,
+} from './search/graph';
 
 const REINDEX_DEBOUNCE_MS = 2000;
 const SAVE_DEBOUNCE_MS = 5000;
@@ -535,6 +541,50 @@ export class Brain {
 		);
 		await this.flushLog();
 		return notes;
+	}
+
+	/**
+	 * Build 2-hop Context Graph around a seed note or text query.
+	 */
+	async getGraphData(
+		seed: GraphSeed,
+		options?: Partial<GraphBuildOptions>,
+	): Promise<GraphData> {
+		if (!this.ready || !this.index) {
+			return { nodes: [], edges: [], seed };
+		}
+		const buildOptions: GraphBuildOptions = {
+			graphHop1Count:
+				options?.graphHop1Count ?? this.plugin.settings.graphHop1Count,
+			graphHop2Count:
+				options?.graphHop2Count ?? this.plugin.settings.graphHop2Count,
+			graphSimilarityThreshold:
+				options?.graphSimilarityThreshold ??
+				this.plugin.settings.graphSimilarityThreshold,
+		};
+
+		let initialHop1: Array<{ filePath: string; score: number }> | undefined;
+		if (seed.type === 'note') {
+			try {
+				const related = await this.relatedTo(seed.path);
+				if (related && related.length > 0) {
+					initialHop1 = related.map((r) => ({
+						filePath: r.filePath,
+						score: r.bestScore,
+					}));
+				}
+			} catch (e) {
+				this.logger.debug('failed to fetch primary related notes for graph seed', { kind: 'search' }, e);
+			}
+		}
+
+		return buildContextGraph(
+			this.index,
+			seed,
+			buildOptions,
+			this.embedder ?? undefined,
+			initialHop1,
+		);
 	}
 
 	/** Persist on unload (best effort). */

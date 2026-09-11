@@ -1,0 +1,223 @@
+import { describe, it, expect, vi } from 'vitest';
+import { ChunkIndex } from '../../src/index/chunk-index';
+import { BruteForceVectorStore } from '../../src/index/vector-store';
+import {
+	buildContextGraph,
+	maxNoteSimilarity,
+	type GraphSeed,
+} from '../../src/search/graph';
+import type { Embedder } from '../../src/embed/embedder';
+
+function unitVector(dim: number, index: number): Float32Array {
+	const vec = new Float32Array(dim);
+	vec[index] = 1;
+	return vec;
+}
+
+function blendVectors(v1: Float32Array, v2: Float32Array, w1 = 0.5, w2 = 0.5): Float32Array {
+	const dim = v1.length;
+	const out = new Float32Array(dim);
+	let norm = 0;
+	for (let i = 0; i < dim; i++) {
+		out[i] = (v1[i] ?? 0) * w1 + (v2[i] ?? 0) * w2;
+		norm += (out[i] ?? 0) * (out[i] ?? 0);
+	}
+	norm = Math.sqrt(norm);
+	for (let i = 0; i < dim; i++) {
+		out[i] = (out[i] ?? 0) / norm;
+	}
+	return out;
+}
+
+describe('graph data layer', () => {
+	const dim = 4;
+
+	describe('maxNoteSimilarity', () => {
+		it('returns -1 for empty vector sets', () => {
+			expect(maxNoteSimilarity([], [])).toBe(-1);
+			expect(maxNoteSimilarity([unitVector(dim, 0)], [])).toBe(-1);
+		});
+
+		it('finds the maximum cosine similarity between two sets of vectors', () => {
+			const a1 = unitVector(dim, 0); // [1, 0, 0, 0]
+			const a2 = unitVector(dim, 1); // [0, 1, 0, 0]
+
+			const b1 = blendVectors(unitVector(dim, 0), unitVector(dim, 2), 0.9, 0.1);
+			const b2 = unitVector(dim, 3);
+
+			// dot(a1, b1) is high (~0.99), dot(a1, b2) is 0, dot(a2, b1) is 0, dot(a2, b2) is 0
+			const sim = maxNoteSimilarity([a1, a2], [b1, b2]);
+			expect(sim).toBeGreaterThan(0.9);
+			expect(sim).toBeLessThanOrEqual(1.0);
+		});
+	});
+
+	describe('buildContextGraph with note seed', () => {
+		it('constructs a 2-hop graph with deduplicated nodes and edges meeting threshold', async () => {
+			const index = new ChunkIndex(new BruteForceVectorStore(dim));
+
+			// Setup 4 notes:
+			// Seed: Alpha (direction 0)
+			// Hop 1: Beta (very close to direction 0)
+			// Hop 2: Gamma (close to Beta, but further from Alpha)
+			// Unrelated: Delta (orthogonal direction 3)
+			const v0 = unitVector(dim, 0);
+			const vBeta = blendVectors(v0, unitVector(dim, 1), 0.9, 0.1); // sim to Alpha ~ 0.99
+			const vGamma = blendVectors(vBeta, unitVector(dim, 2), 0.85, 0.15); // sim to Beta ~ 0.98, sim to Alpha ~ 0.84
+			const vDelta = unitVector(dim, 3); // sim 0
+
+			await index.updateFile(
+				'Alpha.md',
+				[{ filePath: 'Alpha.md', headingPath: [], titleContext: 'Alpha', text: 'Alpha text' }],
+				async () => [v0],
+			);
+			await index.updateFile(
+				'Beta.md',
+				[{ filePath: 'Beta.md', headingPath: [], titleContext: 'Beta', text: 'Beta text' }],
+				async () => [vBeta],
+			);
+			await index.updateFile(
+				'Gamma.md',
+				[{ filePath: 'Gamma.md', headingPath: [], titleContext: 'Gamma', text: 'Gamma text' }],
+				async () => [vGamma],
+			);
+			await index.updateFile(
+				'Delta.md',
+				[{ filePath: 'Delta.md', headingPath: [], titleContext: 'Delta', text: 'Delta text' }],
+				async () => [vDelta],
+			);
+
+			const seed: GraphSeed = { type: 'note', path: 'Alpha.md' };
+			const graph = await buildContextGraph(index, seed, {
+				graphHop1Count: 1, // Only Beta
+				graphHop2Count: 1, // From Beta -> Gamma
+				graphSimilarityThreshold: 0.8,
+			});
+
+			expect(graph.seed).toEqual(seed);
+
+			// Nodes should contain Alpha (hop 0), Beta (hop 1), Gamma (hop 2)
+			const nodeIds = graph.nodes.map((n) => n.id);
+			expect(nodeIds).toContain('Alpha.md');
+			expect(nodeIds).toContain('Beta.md');
+			expect(nodeIds).toContain('Gamma.md');
+			expect(nodeIds).not.toContain('Delta.md');
+
+			const alphaNode = graph.nodes.find((n) => n.id === 'Alpha.md');
+			expect(alphaNode?.isSeed).toBe(true);
+			expect(alphaNode?.hop).toBe(0);
+
+			const betaNode = graph.nodes.find((n) => n.id === 'Beta.md');
+			expect(betaNode?.isSeed).toBe(false);
+			expect(betaNode?.hop).toBe(1);
+
+			const gammaNode = graph.nodes.find((n) => n.id === 'Gamma.md');
+			expect(gammaNode?.isSeed).toBe(false);
+			expect(gammaNode?.hop).toBe(2);
+
+			// Check edges:
+			// Alpha - Beta (sim > 0.9)
+			// Beta - Gamma (sim > 0.9)
+			// Alpha - Gamma (sim ~ 0.84 >= 0.8)
+			expect(graph.edges.length).toBeGreaterThanOrEqual(2);
+			for (const edge of graph.edges) {
+				expect(edge.similarity).toBeGreaterThanOrEqual(0.8);
+			}
+
+			// Undirected edge deduplication: no (A, B) and (B, A) duplicate
+			const edgePairs = graph.edges.map((e) =>
+				typeof e.source === 'string' && typeof e.target === 'string'
+					? [e.source, e.target].sort().join('---')
+					: '',
+			);
+			const uniquePairs = new Set(edgePairs);
+			expect(edgePairs.length).toBe(uniquePairs.size);
+		});
+
+		it('prevents hairball by ensuring seed connects only to Hop 1 nodes, not Hop 2 nodes', async () => {
+			const index = new ChunkIndex(new BruteForceVectorStore(dim));
+
+			const v0 = unitVector(dim, 0);
+			const vBeta = blendVectors(v0, unitVector(dim, 1), 0.9, 0.1);
+			const vGamma = blendVectors(vBeta, unitVector(dim, 2), 0.85, 0.15);
+
+			await index.updateFile('Alpha.md', [{ filePath: 'Alpha.md', headingPath: [], titleContext: 'Alpha', text: 'Alpha text' }], async () => [v0]);
+			await index.updateFile('Beta.md', [{ filePath: 'Beta.md', headingPath: [], titleContext: 'Beta', text: 'Beta text' }], async () => [vBeta]);
+			await index.updateFile('Gamma.md', [{ filePath: 'Gamma.md', headingPath: [], titleContext: 'Gamma', text: 'Gamma text' }], async () => [vGamma]);
+
+			const graph = await buildContextGraph(index, { type: 'note', path: 'Alpha.md' }, {
+				graphHop1Count: 1,
+				graphHop2Count: 1,
+				graphSimilarityThreshold: 0.8,
+			});
+
+			const alphaEdges = graph.edges.filter((e) => e.source === 'Alpha.md' || e.target === 'Alpha.md');
+			expect(alphaEdges.length).toBe(1);
+			const connectedToAlpha = alphaEdges.map((e) => (e.source === 'Alpha.md' ? e.target : e.source));
+			expect(connectedToAlpha).toEqual(['Beta.md']);
+			expect(connectedToAlpha).not.toContain('Gamma.md');
+		});
+
+		it('handles non-existent seed note gracefully', async () => {
+			const index = new ChunkIndex(new BruteForceVectorStore(dim));
+			const seed: GraphSeed = { type: 'note', path: 'NonExistent.md' };
+			const graph = await buildContextGraph(index, seed, {
+				graphHop1Count: 5,
+				graphHop2Count: 3,
+				graphSimilarityThreshold: 0.75,
+			});
+
+			expect(graph.nodes.length).toBe(0);
+			expect(graph.edges.length).toBe(0);
+		});
+	});
+
+	describe('buildContextGraph with query seed', () => {
+		it('embeds query and seeds graph with query node at hop 0', async () => {
+			const index = new ChunkIndex(new BruteForceVectorStore(dim));
+
+			const v0 = unitVector(dim, 0);
+			const v1 = blendVectors(v0, unitVector(dim, 1), 0.9, 0.1);
+
+			await index.updateFile(
+				'Alpha.md',
+				[{ filePath: 'Alpha.md', headingPath: [], titleContext: 'Alpha', text: 'Alpha text' }],
+				async () => [v0],
+			);
+			await index.updateFile(
+				'Beta.md',
+				[{ filePath: 'Beta.md', headingPath: [], titleContext: 'Beta', text: 'Beta text' }],
+				async () => [v1],
+			);
+
+			const embedQueryMock = vi.fn().mockResolvedValue(v0);
+			const mockEmbedder: Embedder = {
+				dimensions: dim,
+				embedDocuments: vi.fn(),
+				embedQuery: embedQueryMock,
+			};
+
+			const seed: GraphSeed = { type: 'query', query: 'quantum computing' };
+			const graph = await buildContextGraph(
+				index,
+				seed,
+				{
+					graphHop1Count: 2,
+					graphHop2Count: 1,
+					graphSimilarityThreshold: 0.75,
+				},
+				mockEmbedder,
+			);
+
+			expect(embedQueryMock).toHaveBeenCalledWith('quantum computing');
+
+			const queryNode = graph.nodes.find((n) => n.id === '__query__');
+			expect(queryNode).toBeDefined();
+			expect(queryNode?.isSeed).toBe(true);
+			expect(queryNode?.hop).toBe(0);
+			expect(queryNode?.label).toBe('"quantum computing"');
+
+			expect(graph.nodes.some((n) => n.id === 'Alpha.md')).toBe(true);
+		});
+	});
+});

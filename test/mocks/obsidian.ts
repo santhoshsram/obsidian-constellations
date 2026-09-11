@@ -1,3 +1,7 @@
+if (typeof (globalThis as unknown as { window?: unknown }).window === 'undefined') {
+	(globalThis as unknown as { window: unknown }).window = globalThis;
+}
+
 export class MockElement {
 	tagName: string;
 	className: string = '';
@@ -6,9 +10,69 @@ export class MockElement {
 	parentElement: MockElement | null = null;
 	attributes: Record<string, string> = {};
 	eventListeners: Record<string, Array<(e?: any) => void>> = {};
+	style: Record<string, string> = {};
+	width = 800;
+	height = 600;
 
 	constructor(tagName = 'div') {
 		this.tagName = tagName;
+	}
+
+	getBoundingClientRect() {
+		return {
+			left: 0,
+			top: 0,
+			width: this.width,
+			height: this.height,
+			right: this.width,
+			bottom: this.height,
+			x: 0,
+			y: 0,
+			toJSON: () => {},
+		};
+	}
+
+	getContext(type: string) {
+		if (type === '2d') {
+			return {
+				canvas: this,
+				save: () => {},
+				restore: () => {},
+				scale: () => {},
+				translate: () => {},
+				clearRect: () => {},
+				beginPath: () => {},
+				arc: () => {},
+				fill: () => {},
+				stroke: () => {},
+				moveTo: () => {},
+				lineTo: () => {},
+				fillText: () => {},
+				measureText: (text: string) => ({ width: text.length * 7 }),
+				fillStyle: '',
+				strokeStyle: '',
+				lineWidth: 1,
+				font: '',
+				textAlign: '',
+				textBaseline: '',
+				globalAlpha: 1,
+			};
+		}
+		return null;
+	}
+
+	appendChild(child: MockElement) {
+		child.parentElement = this;
+		this.children.push(child);
+		return child;
+	}
+
+	remove() {
+		if (this.parentElement) {
+			const idx = this.parentElement.children.indexOf(this);
+			if (idx >= 0) this.parentElement.children.splice(idx, 1);
+			this.parentElement = null;
+		}
 	}
 
 	empty() {
@@ -18,6 +82,31 @@ export class MockElement {
 
 	setText(text: string) {
 		this.textContent = text;
+		return this;
+	}
+
+	addClass(...classes: string[]) {
+		const current = new Set(this.className.split(' ').filter(Boolean));
+		for (const c of classes) current.add(c);
+		this.className = [...current].join(' ');
+		return this;
+	}
+
+	removeClass(...classes: string[]) {
+		const toRemove = new Set(classes);
+		const current = this.className.split(' ').filter((c) => !toRemove.has(c));
+		this.className = current.join(' ');
+		return this;
+	}
+
+	toggleClass(cls: string, val?: boolean) {
+		const has = this.className.split(' ').includes(cls);
+		const shouldHave = val !== undefined ? val : !has;
+		if (shouldHave) {
+			this.addClass(cls);
+		} else {
+			this.removeClass(cls);
+		}
 		return this;
 	}
 
@@ -45,6 +134,12 @@ export class MockElement {
 	addEventListener(type: string, listener: (e?: any) => void) {
 		if (!this.eventListeners[type]) this.eventListeners[type] = [];
 		this.eventListeners[type].push(listener);
+	}
+
+	removeEventListener(type: string, listener: (e?: any) => void) {
+		if (this.eventListeners[type]) {
+			this.eventListeners[type] = this.eventListeners[type].filter((l) => l !== listener);
+		}
 	}
 
 	click() {
@@ -193,6 +288,9 @@ export class Plugin {
 	addStatusBarItem() {
 		return new MockElement('div');
 	}
+	addRibbonIcon(_icon: string, _title: string, _callback: () => void) {
+		return new MockElement('div');
+	}
 	registerView() {}
 	registerEvent() {}
 	loadData() {
@@ -201,6 +299,39 @@ export class Plugin {
 	saveData() {
 		return Promise.resolve();
 	}
+}
+
+export class Modal {
+	app: any;
+	containerEl: MockElement;
+	modalEl: MockElement;
+	contentEl: MockElement;
+	titleEl: MockElement;
+	closeButtonEl: MockElement;
+	scope: any;
+
+	constructor(app: any) {
+		this.app = app;
+		this.containerEl = new MockElement('div');
+		this.modalEl = new MockElement('div');
+		this.contentEl = new MockElement('div');
+		this.titleEl = new MockElement('div');
+		this.closeButtonEl = new MockElement('button');
+		this.closeButtonEl.className = 'modal-close-button mod-raised';
+		this.containerEl.children.push(this.modalEl);
+		this.modalEl.children.push(this.titleEl, this.closeButtonEl, this.contentEl);
+	}
+
+	open(): void {
+		this.onOpen();
+	}
+
+	close(): void {
+		this.onClose();
+	}
+
+	onOpen(): void {}
+	onClose(): void {}
 }
 
 export function setIcon(parent: any, iconId: string) {
