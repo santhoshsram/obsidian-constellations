@@ -146,16 +146,30 @@ export class Brain {
 			this.setRerankerStatus({ state: 'loading' });
 			this.plugin.setStatus('Brain: loading reranking model…');
 			const isCached = await isModelCached(rerankerModel.modelId);
-			const createdReranker = await createRerankerPipeline(rerankerModel, (p) => {
-				const isWeightsFile = !p.file || p.file.endsWith('.onnx') || p.file.endsWith('.onnx_data') || p.file.endsWith('.safetensors') || p.file.endsWith('.bin');
-				if (!isCached && p.status === 'progress' && typeof p.progress === 'number' && isWeightsFile) {
-					const pct = Math.round(p.progress);
-					this.plugin.setStatus(`Brain: downloading reranking model ${pct}%`);
-					this.setRerankerStatus({ state: 'downloading', progress: pct });
-				} else if (p.status === 'done' && isWeightsFile) {
-					this.setRerankerStatus({ state: 'loading' });
-				}
-			});
+			const createdReranker = await createRerankerPipeline(
+				rerankerModel,
+				(p) => {
+					const isWeightsFile =
+						!p.file ||
+						p.file.endsWith('.onnx') ||
+						p.file.endsWith('.onnx_data') ||
+						p.file.endsWith('.safetensors') ||
+						p.file.endsWith('.bin');
+					if (
+						!isCached &&
+						p.status === 'progress' &&
+						typeof p.progress === 'number' &&
+						isWeightsFile
+					) {
+						const pct = Math.round(p.progress);
+						this.plugin.setStatus(`Brain: downloading reranking model ${pct}%`);
+						this.setRerankerStatus({ state: 'downloading', progress: pct });
+					} else if (p.status === 'done' && isWeightsFile) {
+						this.setRerankerStatus({ state: 'loading' });
+					}
+				},
+				this.logger,
+			);
 			this.reranker = new TransformersReranker(
 				createdReranker.rerankPairs,
 				rerankerModel,
@@ -174,7 +188,6 @@ export class Brain {
 				{ kind: 'rerank' },
 				e,
 			);
-			console.warn(`${pluginName()}: reranker model failed to load`, e);
 		}
 	}
 
@@ -255,16 +268,30 @@ export class Brain {
 			this.setEmbeddingStatus({ state: 'loading' });
 			this.plugin.setStatus('Brain: loading embedding model…');
 			const isCached = await isModelCached(model.modelId);
-			const created = await createEmbeddingPipeline(model, (p) => {
-				const isWeightsFile = !p.file || p.file.endsWith('.onnx') || p.file.endsWith('.onnx_data') || p.file.endsWith('.safetensors') || p.file.endsWith('.bin');
-				if (!isCached && p.status === 'progress' && typeof p.progress === 'number' && isWeightsFile) {
-					const pct = Math.round(p.progress);
-					this.plugin.setStatus(`Brain: downloading embedding model ${pct}%`);
-					this.setEmbeddingStatus({ state: 'downloading', progress: pct });
-				} else if (p.status === 'done' && isWeightsFile) {
-					this.setEmbeddingStatus({ state: 'loading' });
-				}
-			});
+			const created = await createEmbeddingPipeline(
+				model,
+				(p) => {
+					const isWeightsFile =
+						!p.file ||
+						p.file.endsWith('.onnx') ||
+						p.file.endsWith('.onnx_data') ||
+						p.file.endsWith('.safetensors') ||
+						p.file.endsWith('.bin');
+					if (
+						!isCached &&
+						p.status === 'progress' &&
+						typeof p.progress === 'number' &&
+						isWeightsFile
+					) {
+						const pct = Math.round(p.progress);
+						this.plugin.setStatus(`Brain: downloading embedding model ${pct}%`);
+						this.setEmbeddingStatus({ state: 'downloading', progress: pct });
+					} else if (p.status === 'done' && isWeightsFile) {
+						this.setEmbeddingStatus({ state: 'loading' });
+					}
+				},
+				this.logger,
+			);
 			pipe = created.pipe;
 			this.logger.info(
 				`embedding pipeline ready on device=${created.device}`,
@@ -278,7 +305,7 @@ export class Brain {
 				`${pluginName()}: embedding model failed to load. Check the console (Cmd-Option-I) for details.`,
 				0,
 			);
-			console.error(`${pluginName()}: model load failed`, e);
+			this.logger.error('model load failed', e);
 			return;
 		}
 		this.embedder = new TransformersEmbedder(pipe, model);
@@ -327,7 +354,7 @@ export class Brain {
 				`${pluginName()}: indexing failed. Check the console (Cmd-Option-I) for details.`,
 				0,
 			);
-			console.error(`${pluginName()}: indexing failed`, e);
+			this.logger.error('indexing failed', e);
 			return;
 		}
 		this.ready = true;
@@ -405,7 +432,7 @@ export class Brain {
 				currentFile: 'Reindexing failed',
 			});
 			this.plugin.setStatus('Brain: reindexing failed');
-			console.error(`${pluginName()}: reindex failed`, e);
+			this.logger.error('reindex failed', e);
 		}
 	}
 
@@ -436,7 +463,7 @@ export class Brain {
 		};
 
 		const tTotalStart = performance.now();
-		this.logger.info(
+		this.logger.debug(
 			`[retrieval] Query start for "${filePath}" (strategy=${strategy})`,
 		);
 
@@ -449,13 +476,13 @@ export class Brain {
 		);
 		const stage1Ms = performance.now() - tStage1Start;
 		const sourceChunks = this.index.chunksForFile(filePath);
-		this.logger.info(
+		this.logger.debug(
 			`[retrieval] Stage 1 (cosine similarity): ${stage1Ms.toFixed(1)}ms | ` +
 				`sourceChunks=${sourceChunks.length} -> candidateChunks=${candidates.length}`,
 		);
 
 		if (candidates.length === 0) {
-			this.logger.info(
+			this.logger.debug(
 				`[retrieval] No candidates found in stage 1 for "${filePath}" (${stage1Ms.toFixed(1)}ms)`,
 			);
 			await this.flushLog();
@@ -485,7 +512,7 @@ export class Brain {
 			const assembleMs = performance.now() - tAssembleStart;
 			const totalMs = performance.now() - tTotalStart;
 
-			this.logger.info(
+			this.logger.debug(
 				`[retrieval] Finished in ${totalMs.toFixed(1)}ms | ` +
 					`stage1=${stage1Ms.toFixed(1)}ms stage2=${stage2Ms.toFixed(1)}ms assemble=${assembleMs.toFixed(1)}ms -> returned ${notes.length} related notes`,
 			);
@@ -502,7 +529,7 @@ export class Brain {
 		const assembleMs = performance.now() - tAssembleStart;
 		const totalMs = performance.now() - tTotalStart;
 
-		this.logger.info(
+		this.logger.debug(
 			`[retrieval] Finished (vector-only) in ${totalMs.toFixed(1)}ms | ` +
 				`stage1=${stage1Ms.toFixed(1)}ms assemble=${assembleMs.toFixed(1)}ms -> returned ${notes.length} related notes`,
 		);
@@ -569,6 +596,12 @@ export class Brain {
 	private async flushLog(): Promise<void> {
 		if (this.logFile) {
 			await this.logFile.flush();
+		}
+	}
+
+	async clearLog(): Promise<void> {
+		if (this.logFile) {
+			await this.logFile.clear();
 		}
 	}
 
@@ -675,7 +708,7 @@ export class Brain {
 			this.plugin.setStatus('');
 		} catch (e) {
 			this.plugin.setStatus('');
-			console.warn(`${pluginName()}: failed to index ${path}`, e);
+			this.logger.warn(`failed to index ${path}`, e);
 		}
 	}
 

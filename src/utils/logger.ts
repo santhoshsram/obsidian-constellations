@@ -74,7 +74,7 @@ export class ConsoleLogger implements Logger {
 
 	info(message: string, ...args: unknown[]): void {
 		// console.info is not in obsidianmd's allowed methods, so debug it.
-		this.emit('info', console.debug, message, args);
+		if (this.enabled) this.emit('info', console.debug, message, args);
 	}
 
 	warn(message: string, ...args: unknown[]): void {

@@ -68,7 +68,7 @@ export async function rerankCandidateChunks(
 		.sort((a, b) => b.score - a.score)
 		.slice(0, topK);
 	const funnelMs = performance.now() - tFunnelStart;
-	logger?.info(
+	logger?.debug(
 		`[rerank] Top-${topK} funneling: took ${funnelMs.toFixed(1)}ms (${candidates.length} stage 1 chunks -> pool of ${pool.length})`,
 	);
 
@@ -93,14 +93,17 @@ export async function rerankCandidateChunks(
 		);
 	} catch (e) {
 		if (fallbackOnError) {
-			logger?.warn?.('[rerank] File read failed during reranking', e);
-			console.warn(`${pluginName()}: file read failed during reranking`, e);
+			if (logger?.warn) {
+				logger.warn('[rerank] File read failed during reranking', e);
+			} else {
+				console.warn(`${pluginName()}: file read failed during reranking`, e);
+			}
 			return pool;
 		}
 		throw e;
 	}
 	const readMs = performance.now() - tReadStart;
-	logger?.info(
+	logger?.debug(
 		`[rerank] Chunk fetch: read ${pathsToRead.size} unique note files in ${readMs.toFixed(1)}ms (avg ${(readMs / Math.max(1, pathsToRead.size)).toFixed(1)}ms/file)`,
 	);
 
@@ -131,7 +134,7 @@ export async function rerankCandidateChunks(
 		pairs.push({ query, passage });
 	}
 	const pairMs = performance.now() - tPairStart;
-	logger?.info(
+	logger?.debug(
 		`[rerank] Chunk slicing: extracted ${pairs.length} (query, passage) pairs in ${pairMs.toFixed(1)}ms`,
 	);
 
@@ -145,7 +148,7 @@ export async function rerankCandidateChunks(
 							info.tokenizeMs !== undefined && info.inferMs !== undefined
 								? ` (tokenize=${info.tokenizeMs.toFixed(1)}ms, inference=${info.inferMs.toFixed(1)}ms)`
 								: '';
-						logger.info(
+						logger.debug(
 							`[rerank] Batch ${info.batchIdx}/${info.totalBatches} (${info.batchSize} pairs): ${info.batchMs.toFixed(1)}ms${details} [${(info.batchMs / Math.max(1, info.batchSize)).toFixed(1)}ms/pair]`,
 						);
 					},
@@ -157,7 +160,7 @@ export async function rerankCandidateChunks(
 			: await reranker.rerankPairs(pairs);
 
 		const inferTotalMs = performance.now() - tInferStart;
-		logger?.info(
+		logger?.debug(
 			`[rerank] Cross-encoder inference complete: ${inferTotalMs.toFixed(1)}ms for ${pairs.length} pairs (${(inferTotalMs / Math.max(1, pairs.length)).toFixed(1)}ms/pair, device=${reranker.device ?? 'unknown'})`,
 		);
 
@@ -179,7 +182,7 @@ export async function rerankCandidateChunks(
 			const vecScore =
 				c.vectorScore !== undefined ? c.vectorScore.toFixed(3) : '?';
 			const rrScore = c.score.toFixed(3);
-			logger?.info(
+			logger?.debug(
 				`[rerank] Candidate #${i + 1}: "${c.record.filePath}" (${heading}) | rank ${origRank} -> ${i + 1} | vectorScore=${vecScore} -> rerankScore=${rrScore}`,
 			);
 		}
@@ -187,11 +190,14 @@ export async function rerankCandidateChunks(
 		return reranked;
 	} catch (e) {
 		const errStr = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-		logger?.warn?.(
-			`[rerank] Cross-encoder reranking failed: ${errStr}`,
-			e,
-		);
-		console.warn(`${pluginName()}: cross-encoder reranking failed, falling back to vector scores`, e);
+		if (logger?.warn) {
+			logger.warn(`[rerank] Cross-encoder reranking failed: ${errStr}`, e);
+		} else {
+			console.warn(
+				`${pluginName()}: cross-encoder reranking failed, falling back to vector scores`,
+				e,
+			);
+		}
 		if (fallbackOnError) {
 			return pool;
 		}

@@ -53,4 +53,37 @@ describe('BufferedLogFile', () => {
 		expect(store.content).toMatch(/old/);
 		expect(store.content).toMatch(/newline/);
 	});
+
+	it('truncates existing content on init when exceeding maxLines', async () => {
+		const store = new FakeStore();
+		store.content = ['l1', 'l2', 'l3', 'l4', 'l5'].join('\n');
+		const f = new BufferedLogFile(store, 500, 3); // maxLines = 3
+		await f.init();
+		expect(f.snapshot()).toEqual(['l3', 'l4', 'l5']);
+	});
+
+	it('rotates rolling buffer FIFO when appended lines exceed maxLines', async () => {
+		const store = new FakeStore();
+		const f = new BufferedLogFile(store, 500, 3); // maxLines = 3
+		await f.init();
+		f.append('l1');
+		f.append('l2');
+		f.append('l3');
+		f.append('l4');
+		f.append('l5');
+		expect(f.snapshot()).toEqual(['l3', 'l4', 'l5']);
+		await f.flush();
+		expect(store.content).toBe('l3\nl4\nl5\n');
+	});
+
+	it('clears all buffered lines and persists empty store on clear()', async () => {
+		const store = new FakeStore();
+		store.content = 'line1\nline2';
+		const f = new BufferedLogFile(store, 500, 3);
+		await f.init();
+		expect(f.snapshot()).toHaveLength(2);
+		await f.clear();
+		expect(f.snapshot()).toEqual([]);
+		expect(store.content).toBe('');
+	});
 });

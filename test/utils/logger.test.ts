@@ -11,9 +11,10 @@ describe('ConsoleLogger', () => {
 		vi.spyOn(console, 'error').mockImplementation(() => {});
 	});
 
-	it('emits debug entries only when enabled', () => {
+	it('emits debug and info entries only when enabled', () => {
 		const disabled = new ConsoleLogger('obsidian-brain', { enabled: false });
 		disabled.debug('secret timing data');
+		disabled.info('secret info data');
 		expect(spy).not.toHaveBeenCalled();
 
 		const enabled = new ConsoleLogger('obsidian-brain', { enabled: true });
@@ -22,6 +23,12 @@ describe('ConsoleLogger', () => {
 			expect.stringMatching(/^\[obsidian-brain\] \+\d+ms debug/),
 		);
 		expect(String(spy.mock.calls[0]?.[0])).toContain('visible timing data');
+
+		enabled.info('visible info data');
+		expect(spy).toHaveBeenCalledWith(
+			expect.stringMatching(/^\[obsidian-brain\] \+\d+ms info/),
+		);
+		expect(String(spy.mock.calls[1]?.[0])).toContain('visible info data');
 	});
 
 	it('allows toggling enabled at runtime', () => {
