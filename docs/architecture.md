@@ -1,217 +1,184 @@
-# Obsidian Brain — Technical Design
+# Obsidian Brain — Technical Architecture
 
-A local-first "second brain" plugin for Obsidian: it indexes the vault into
-semantic chunks, embeds them fully on-device, and surfaces related notes
-(with the exact matching sections) for whatever note you're viewing.
-Semantic graph and chat follow in later phases.
+Obsidian Brain is a local-first semantic retrieval plugin for Obsidian. It indexes vault notes into content-addressed semantic chunks, computes vector embeddings fully on-device, and surfaces relevant notes using two-stage retrieval (dense vector search funneled into a cross-encoder reranker).
 
-## Goals & principles
+---
 
-- **Local-first.** Embeddings run in-plugin via transformers.js
-  (ONNX/WASM, WebGPU when available). The only network call in v1 is the
-  one-time model download from Hugging Face — disclosed in README and
-  settings.
-- **Simple over clever.** No native dependencies, no ANN library until
-  profiling says otherwise, no external servers for embeddings.
-- **Actively evolving memory.** The index stays fresh via file events,
-  not scheduled re-indexing.
-- **Desktop only for now** (`isDesktopOnly: true`); mobile later.
+## 1. Principles
 
-## Stack
+- **Local-first & Private:** All embeddings and reranking inference execute on-device via WebGPU/WASM. The only network call is a one-time download of model weights from Hugging Face on initial setup. Vault contents never leave the local machine.
+- **Zero Text Duplication:** Note text is never duplicated inside index files. The index stores structural metadata and line coordinates; chunk text is read on demand from vault files.
+- **Event-Driven Freshness:** Vault changes (`create`, `modify`, `delete`, `rename`) trigger incremental re-indexing via debounced file events.
+- **Desktop-first:** Targeted at desktop platforms running Obsidian on Electron with WebGPU support.
 
-| Concern | Choice |
-| --- | --- |
-| Language / build | TypeScript (strict), npm, esbuild → `main.js` |
-| Embedding runtime | `@huggingface/transformers` (transformers.js, ONNX) |
-| Embedding model | `nomic-ai/nomic-embed-text-v1.5` (768d, 8192 ctx, q8 ~140MB) |
-| Vector search | Brute-force cosine over `Float32Array`, behind a `VectorStore` interface |
-| Persistence | Plugin dir: `vectors.bin`, `chunks.json`, `state.json` |
-| Tests | vitest; parser verified against Python reference outputs |
-| Chat (Phase 4) | Ollama / LM Studio via OpenAI-compatible API |
+---
 
-### Default Model: embeddinggemma-300m-ONNX
+## 2. System Stack
 
-- 2048-token context → keeps the accio.ai `MAX_TOKENS = 2048` chunking intact.
-- Modern Google embedding architecture with top-tier retrieval quality (MTEB 68.1).
-- Ships full ONNX variant set (`q8`, `q4`, `fp32`). Runs on WebGPU at ~11-12 ch/s.
-- Clean document and query embeddings (no awkward task prefixes required).
+| Component | Technology | Details |
+| :--- | :--- | :--- |
+| **Plugin Core** | TypeScript (strict), esbuild | Compiles to standalone `main.js` |
+| **Inference Engine** | `@huggingface/transformers` | ONNX Runtime Web with WebGPU & WASM fallbacks |
+| **Default Embedder** | `onnx-community/embeddinggemma-300m-ONNX` | 768 dimensions, 2,048-token context, q4/fp32 |
+| **Alternative Embedders** | `Snowflake/snowflake-arctic-embed-xs`<br>`Xenova/all-MiniLM-L6-v2` | 384 dimensions (fast / lightweight options) |
+| **Default Reranker** | `Xenova/ms-marco-MiniLM-L-6-v2` | 22M cross-encoder, fp16/fp32 WebGPU |
+| **Alternative Reranker** | `Alibaba-NLP/gte-reranker-modernbert-base` | ModernBERT 150M cross-encoder |
+| **Vector Store** | In-memory brute-force cosine search | Flat contiguous `Float32Array` buffer |
+| **Persistence** | Vault adapter (`.obsidian/plugins/obsidian-brain/`) | `vectors.bin`, `chunks.json`, `state.json` |
 
-Alternatives in registry:
-- `Snowflake/snowflake-arctic-embed-xs` (384d, 512-token, 115 ch/s, MTEB 62.5 — fast/lightweight pick)
-- `Xenova/all-MiniLM-L6-v2` (384d, 256-token, 120 ch/s — classic standard)
+### Electron & WebGPU Runtime Bridge
+Obsidian's Electron renderer includes Node integration, which can cause web-targeted libraries to misidentify the runtime. To ensure `@huggingface/transformers` activates its browser/WebGPU backend (`onnxruntime-web`) rather than Node stubs, the plugin imports `onnxruntime-web/webgpu`, clears the global runtime symbol, and isolates the dynamic import of transformers.js. All execution occurs strictly on-device through browser-compatible APIs.
 
-## Chunking pipeline
+### Architecture at a Glance
 
-The chunking pipeline combines heading hierarchy with fine-grained semantic block parsing:
+```mermaid
+graph TB
+    subgraph "Plugin Lifecycle"
+        M[main.ts<br/>Plugin entry]
+        B[brain.ts<br/>Orchestrator]
+        ST[settings.ts<br/>Settings tab]
+    end
 
-1. **Heading splitting (`splitBySections`)**: Recursive regex split on
-   `#`…`####` (extended from accio.ai's 3 levels to 4), returning
-   `(headingBreadcrumb, content)` tuples.
-2. **Contextual breadcrumb**: The source filename is prepended to the
-   breadcrumb unless the first heading already matches it.
-3. **Block & paragraph parsing (`extractBlocks`)**:
-   Within each heading section (or across heading-less notes), text is
-   decomposed into discrete semantic blocks:
-   - **List item trees**: Top-level bullets (`- `, `* `, `\d+\. `) and
-     all their indented child items remain bound together as a unit of thought.
-   - **Pseudo-headings**: Standalone bold lines (`**Title**` on its own line)
-     are recognized as section boundaries and appended to the heading breadcrumb.
-     Inline bold labels (`**Note:** text...`) remain paragraph prose.
-   - **Prose paragraphs**: Split on blank lines (`\n\s*\n+`).
-   - **Line coordinates**: Every block tracks exact `startLine` and `endLine`
-     (0-indexed) relative to the source note for precise cursor matching and navigation.
-4. **Token grouping (`groupBlocks`)**: Small adjacent blocks (< 80 tokens)
-   are merged up to a target size of ~250 tokens so embeddings retain sufficient
-   context, while substantial blocks ($\ge 80$ tokens) remain standalone.
-5. **Text cleanup (`mdCleanup`)**: Pipe tables flattened, markdown markup
-   stripped, whitespace normalized, and text lowercased.
-6. **Token bounding (`splitByMaxTokens`)**: Oversized blocks (> 2,048 tokens)
-   are halved recursively on natural delimiters (`\n\n` → `\n` → `. ` → ` `).
+    subgraph "Chunking Pipeline"
+        CH[chunker.ts] --> SE[sections.ts]
+        CH --> BL[blocks.ts]
+        CH --> CL[cleanup.ts]
+        CH --> SP[split.ts]
+        CH --> TK[tokens.ts]
+    end
 
-## Index & storage
+    subgraph "Embedding & Reranking"
+        PL[pipeline.ts<br/>transformers.js + ONNX]
+        EM[embedder.ts<br/>batch embed]
+        RR[reranker.ts<br/>cross-encoder]
+        MO[models.ts<br/>model registry]
+    end
 
-All under `<Vault>/.obsidian/plugins/obsidian-brain/` via
-`app.vault.adapter` — never inside the user's notes.
+    subgraph "Index & Storage"
+        CI[chunk-index.ts<br/>content-addressed]
+        VS[vector-store.ts<br/>brute-force cosine]
+        IS[indexing-service.ts<br/>sync orchestration]
+        PR[persistence.ts<br/>vectors.bin + chunks.json + state.json]
+    end
 
-- **`vectors.bin`** — one contiguous `Float32Array` (n_chunks × dims),
-  row = chunk. Written with `writeBinary`.
-- **`chunks.json`** — chunk metadata (offsets, not text copies; see below).
-- **`state.json`** — per-file content hashes, model ID, index stats.
-  Used for catch-up scans and to trigger full rebuilds on model change.
+    subgraph "Retrieval"
+        RT[retrieval.ts<br/>Stage 1: vector search]
+        RK[rerank.ts<br/>Stage 2: cross-encoder]
+        RL[related.ts<br/>note grouping]
+    end
 
-### Space Optimization: Zero Text Duplication Policy
-
-**Never store text copies in `chunks.json`.**
-Storing raw or cleaned text strings in `chunks.json` causes a 2× vault storage footprint penalty (duplicating the vault's entire content on disk). The note content already lives in the user's markdown files.
-
-- `chunks.json` only stores structural metadata and line coordinates:
-  - `filePath`, `headingPath`, `startLine`, `endLine`, `id` (sha1), `vectorRow`.
-- **UI Snippets on Demand:** When the related-notes sidebar or search view needs to display a text preview for a chunk, it reads the note from disk via `app.vault.read(file)` and slices lines `[startLine..endLine]`.
-- **In-memory during active indexing:** Text is held in memory only while passing through chunking and embedding, then discarded from persistent storage.
-
-### Chunk ↔ vector referencing & Granular Navigation
-
-Chunk identity is **content-addressed**, not position-based:
-
-```ts
-interface ChunkRecord {
-  id: string;            // sha1 of cleanText — stable across edits/renames
-  filePath: string;
-  headingPath: string[]; // ["Note title", "Section", "Subsection"]
-  startLine?: number;    // 0-indexed start line in source file
-  endLine?: number;      // 0-indexed end line in source file
-  vectorRow: number;     // row into vectors.bin
-}
+    M --> B
+    M --> ST
+    B --> PL
+    B --> EM
+    B --> RR
+    B --> IS
+    B --> RT
+    IS --> CI
+    IS --> CH
+    CI --> VS
+    EM --> PL
+    RR --> PL
+    RT --> RK
+    RK --> RL
 ```
 
-- **Chunk → vector:** `vectorRow` indexes the matrix (row-major).
-- **Vector → chunk:** search returns rows → `chunks[row]`; tombstones on
-  delete, compacted on save.
-- **Edit efficiency:** re-chunk a changed file, hash each chunk, reuse
-  embeddings for unchanged chunks — editing a paragraph costs one
-  embedding call.
-- **Granular Navigation (Phase 2):**
-  - **Heading navigation:** `app.workspace.openLinkText(`${filePath}#${deepestHeading}`, '')` jumps to the section.
-  - **Exact Block navigation:** `leaf.openFile(file, { eState: { line: chunk.startLine, focus: true } })` scrolls the editor directly to the specific paragraph/block without modifying the note or adding synthetic block IDs (`^...`).
+---
 
-### Why no ANN library (yet)
+## 3. Chunking Pipeline
 
-At <500 notes (~2–5k chunks × 768d), brute-force cosine is
-sub-millisecond. The `VectorStore` interface (`add` / `remove` /
-`search`) allows swapping in `vectra` (pure TS) or `usearch` (WASM)
-later. `hnswlib-node` is rejected (native bindings, Electron ABI pain).
+Markdown notes are parsed hierarchically into bounded semantic blocks with line coordinates:
 
-## Indexing lifecycle
+1. **Heading Sectioning (`splitBySections`):**
+   - Notes are split on markdown headings (`#` through `####`), tracking full heading hierarchy breadcrumbs (e.g., `["Note Title", "Heading 1", "Subheading"]`).
+   - The source filename is prepended to the breadcrumb unless already matching the top heading.
 
-Event-driven, never scheduled:
+2. **Block Extraction (`extractBlocks`):**
+   - Within each section, content is parsed into atomic semantic units:
+     - **List Trees:** Top-level bullets and all indented children remain unified.
+     - **Pseudo-headings:** Standalone bold lines (`**Section Name**`) act as block boundaries.
+     - **Prose Paragraphs:** Split on blank lines.
+   - Every block records exact 0-indexed `startLine` and `endLine` coordinates for direct editor navigation.
 
-- **File events** (`create`/`modify`/`delete`/`rename`, via
-  `registerEvent`) → debounce ~2–3s → re-chunk that file → embed only
-  new/changed chunks.
-- **Plugin load:** catch-up scan comparing stored vs. current file
-  hashes.
-- **On demand:** "Reindex vault" command; automatic full rebuild when
-  the configured model differs from the indexed model.
+3. **Contextual Grouping (`groupBlocks`):**
+   - Small adjacent blocks (< 80 tokens) under the same heading are merged up to ~250 tokens to retain semantic context.
+   - Substantial blocks (≥ 80 tokens) remain standalone chunks.
 
-## Retrieval
+4. **Sanitization & Bounding (`mdCleanup` & `splitByMaxTokens`):**
+   - Tables are flattened, markdown syntax stripped, whitespace normalized.
+   - Oversized blocks exceeding model context (2,048 tokens) are recursively split on natural delimiters (`\n\n` → `\n` → `. ` → ` `).
 
-The plugin provides three matching modes tailored to different note structures and research workflows:
+---
 
-### 1. Detailed (MaxSim / All-Pairs Matching) — Default
-- **How it works**: Compares every chunk $\vec{v}_k$ of the active note individually against all chunk vectors in the vault:
-  $$\text{Score}(\text{doc}) = \max_{c \in \text{active}} \max_{c' \in \text{doc}} \text{cosine}(c, c')$$
-- **Attribution**: Preserves both the source section (`matchedSourceHeading`) and the target section (`matchedHeading`, `startLine`), pinpointing the exact idea connecting two notes.
-- **Cost**: Sub-millisecond matrix operations reusing stored vector rows with zero embedding inference overhead.
-- **Best for**: Multi-topic notes, daily logs, and sprawling braindumps. Avoids the "topic dilution" trap where diverse ideas average out to an unrepresentative centroid.
+## 4. Indexing & Storage
 
-### 2. Focused (Cursor / Active Section Context)
-- **How it works**: Pinpoints the user's immediate editing or reading focus via editor cursor coordinates (`editor.getCursor().line`).
-- **Resolution**:
-  1. Identifies the specific chunk bounding the cursor line (`chunk.startLine <= cursorLine && cursorLine <= chunk.endLine`).
-  2. Falls back to matching the active heading if outside block ranges.
-  3. Queries using only that chunk's vector.
-- **Best for**: Exploring connections to a single paragraph, quote, or sub-idea while reading or actively writing in a long note.
+All index data lives in `<Vault>/.obsidian/plugins/obsidian-brain/`:
 
-### 3. Broad (Mean Vector Pooling)
-- **How it works**: Computes the document centroid $\vec{q} = \frac{1}{N} \sum_{i=1}^N \vec{v}_i$ across all chunks in the note and runs brute-force cosine similarity against the vault.
-- **Best for**: Short, coherent, single-topic notes where overall thematic overlap is desired rather than section-specific links.
+- **`vectors.bin`:** Contiguous binary `Float32Array` of size `(N_chunks × dimensions)`. Row index maps directly to chunk vector.
+- **`chunks.json`:** Array of `ChunkRecord` metadata objects (content hash ID, file path, heading path, startLine, endLine, vectorRow).
+- **`state.json`:** Model ID, vector dimension, file content hashes, and index statistics for fast incremental scans and cache invalidation.
 
-## Two-Stage Reranking (Cross-Encoder)
+### Zero Text Duplication Policy
+- Text content is never stored in `chunks.json`. Storing note text in the index would double vault storage on disk.
+- Snippet preview and cross-encoder reranking read text directly from note files using `app.vault.cachedRead(file)` and slice by `[startLine..endLine]`.
 
-To maximize connection precision without sacrificing speed, retrieval operates as a two-stage funnel:
+### Incremental Updates
+- When a file changes, only that file is re-chunked.
+- Chunk IDs are SHA-1 hashes of cleaned text. Unchanged chunks reuse existing vector rows, avoiding redundant embedding inference.
+- Deleted chunks are tombstoned in memory and compacted on index save.
 
-1. **Stage 1 — Fast Dense Vector Retrieval**:
-   - Executes the selected matching mode (Detailed MaxSim, Focused, or Broad) across all vault chunks.
-   - Funnels the top 35 candidate chunks based on cosine similarity (`RETRIEVAL_CONFIG.stage1CandidatePoolSize = 35`).
-2. **Stage 2 — Cross-Encoder Reranking (`Xenova/ms-marco-MiniLM-L-6-v2`)**:
-   - **Parallel cached reads**: Reads candidate files concurrently via `app.vault.cachedRead()` and extracts precise text slices using 0-indexed line coordinates (`[startLine..endLine]`).
-   - **Pair construction**: Constructs `(source_section_text, candidate_section_text)` pairs for Detailed mode, or `(cursor_chunk_text, candidate_section_text)` for Focused mode.
-   - **Single-batch WebGPU inference**: Evaluates all candidate pairs in a single unified batch (`batchSize: 50`) using `fp16` precision (falling back to `fp32`) on WebGPU. Inference runs in ~475ms (~14ms/pair), with total end-to-end retrieval completing in ~500ms.
-   - **Rescoring & grouping**: Updates candidate scores with cross-encoder logits and passes them to `relatedNotes` to group by file, apply `maxChunksPerNote`, and present the top `maxRelatedNotes`.
-   - **Resilient fallback**: If the reranker model is not loaded or encounters an issue, retrieval seamlessly falls back to vector scores without interrupting the user.
+---
 
-### Retrieval Enhancements (Planned)
+## 5. Retrieval Architecture
 
-- **Hybrid Search (Lexical BM25 + Dense Vectors)**:
-  Combine sparse term matching (BM25 for exact IDs, technical terms, code symbols) with dense semantic embeddings using Reciprocal Rank Fusion (RRF).
+Retrieval uses a two-stage funnel designed to maximize precision while keeping latency low:
 
+```
+[ Active Note / Cursor ]
+         │
+         ▼
+┌────────────────────────────────────────────────────────┐
+│ Stage 1: Dense Vector Retrieval (All Chunks)           │
+│ - Detailed (MaxSim all-pairs cosine similarity)        │
+│ - Focused (Active cursor section chunk)                │
+│ - Broad (Document centroid mean vector)                │
+└────────────────────────────────────────────────────────┘
+         │
+         ▼ Top 35 Candidate Chunks
+┌────────────────────────────────────────────────────────┐
+│ Stage 2: Cross-Encoder Reranker (MiniLM L6 v2)         │
+│ - Parallel cached reads of candidate note slices       │
+│ - Single-batch WebGPU FP16 forward pass                │
+│ - Full query-document cross-attention scoring          │
+└────────────────────────────────────────────────────────┘
+         │
+         ▼ Top Reranked Notes
+[ Related Notes View ]
+```
 
-## UI (Phase 2, mocked in HTML first)
+### Stage 1: Vector Search Modes
+1. **Detailed (MaxSim / All-Pairs) — Default:**
+   - Compares every chunk of the active note against all chunks in the vault:
+     `Score(doc) = max over active chunks, max over doc chunks (cosine_similarity)`
+   - Preserves both source section and target section attribution.
+   - Prevents multi-topic notes from diluting into an unrepresentative average.
+2. **Focused (Cursor Context):**
+   - Matches only the chunk currently containing the user's editor cursor line.
+   - Ideal for finding connections to a specific paragraph while writing.
+3. **Broad (Mean Vector Pooling):**
+   - Compares the document-level centroid against vault chunks for high-level thematic similarity.
 
-- Right-sidebar `ItemView`: "Related notes" for the active note,
-  expandable to show the top matching chunks, click-through to
-  note/heading.
-- Status bar: indexing progress / index freshness.
-- Settings tab: model choice, result counts, score threshold, re-index.
-- Phase 3: semantic graph view (custom canvas or `d3-force`).
-- Phase 4: chat view (RAG over the same retrieval; Ollama/LM Studio).
+### Stage 2: Cross-Encoder Reranking
+- **Candidate Funnel:** Takes the top 35 chunks from Stage 1 (`RETRIEVAL_CONFIG.stage1CandidatePoolSize = 35`).
+- **Parallel Text Fetch:** Reads candidate files in parallel via `app.vault.cachedRead()` and extracts exact text slices `[startLine..endLine]`.
+- **Inference:** Evaluates `(source_text, candidate_text)` pairs in a single batch (`batchSize: 50`) using `Xenova/ms-marco-MiniLM-L-6-v2` on WebGPU with FP16 precision (falling back to FP32).
+- **Rescoring & Grouping:** Replaces Stage 1 cosine scores with cross-encoder relevance logits, groups candidate chunks by parent note, applies `maxChunksPerNote`, and outputs top related notes.
+- **Graceful Fallback:** If WebGPU or the reranker pipeline encounters an issue, retrieval automatically falls back to Stage 1 vector scores without interrupting the user.
 
-## Security & privacy
+---
 
-- Fully offline after the one-time model download (disclosed).
-- No telemetry. Index files live in the plugin dir, outside notes.
-- All listeners/intervals registered via `register*` helpers for clean
-  unload.
+## 6. Security & Privacy
 
-## Appendix: transformers.js in Obsidian (hard-won notes)
-
-Obsidian's Electron renderer has Node integration, so
-`process.release.name === 'node'` and transformers.js misdetects the
-environment, selecting the `onnxruntime-node` backend — an empty stub in
-the web build. Additionally, modern onnxruntime-web self-registers under
-`globalThis[Symbol.for('onnxruntime')]`, and transformers.js's symbol
-branch never populates `supportedDevices`, so every device is rejected.
-
-**Our fix** (`src/embed/pipeline.ts`): import onnxruntime-web first and
-delete the global symbol; then patch `process.release.name` around a
-dynamic `import('@huggingface/transformers')` (restored immediately
-after). transformers.js then takes its web branch: real WASM runtime,
-correct device lists. Device fallback chain: WebGPU q8 → WASM q8 →
-WASM auto (no device key).
-
-**Why not load transformers.js from a CDN like Smart Connections?**
-Smart Connections marks `@huggingface/transformers` as external and
-dynamically imports it from jsdelivr at runtime. That avoids all
-bundling issues but means executing remote code on every startup —
-against Obsidian's plugin guidelines and this project's security rules.
-We bundle instead.
+- **100% On-Device:** Zero telemetry, zero cloud dependencies, zero external API keys.
+- **Model Downloads:** Models download once directly from Hugging Face Hub on first selection and are cached locally via browser Cache API. Disclosed in settings and documentation.
+- **Lifecycle Cleanup:** All event listeners, DOM elements, and intervals register via Obsidian's `register*` helpers for clean unloads.
