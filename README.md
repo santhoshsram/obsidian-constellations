@@ -38,6 +38,7 @@ Local-first semantic retrieval and discovery for Obsidian. Constellations indexe
 - **Debug logging:** Toggle detailed indexing and performance logs in the developer console.
 - **Embedding model:** Choose the semantic model for vector search. `Gemma 300M` for high accuracy, or `All MiniLM L6` for faster performance on older devices. Changing models triggers a re-index.
 - **Reranking model:** Shows the active cross-encoder (`MiniLM L6`). Currently cannot be changed; future enhancements may add other models.
+- **Matching mode:** Choose how related notes are found (Detailed, Focused, or Broad).
 - **Open related notes in new tab:** Open clicked related notes in a new tab instead of the current one.
 - **Related notes:** Maximum number of related notes to show.
 - **Sections per note:** Maximum number of matching sections shown per related note.
