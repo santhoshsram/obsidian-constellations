@@ -2,6 +2,9 @@
 
 Local-first semantic retrieval and discovery for Obsidian. Constellations indexes your vault on-device into semantic chunks and surfaces related notes, ideas, and passages through focused, contextual exploration.
 
+> **Why "Constellations"?**
+> Notes in a vault rarely connect to everything all at once. Instead, ideas naturally gather into distinct clusters — like constellations scattered across the night sky. Constellations illuminates the specific cluster orbiting whatever thought is currently at the center of your attention.
+
 ## Highlights
 
 - **Related Notes View:** Surfaces semantically relevant notes and exact matching passages in real time as you write.
