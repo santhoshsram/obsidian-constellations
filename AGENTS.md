@@ -1,19 +1,17 @@
-# Obsidian community plugin
+# Constellations Obsidian Plugin
 
 ## Project overview
 
-- Target: Obsidian Community Plugin (TypeScript → bundled JavaScript).
-- Entry point: `src/main.ts` compiled to `main.js` and loaded by Obsidian.
-- Required release artifacts: `main.js`, `manifest.json`, and optional `styles.css`.
+- **Target**: Constellations — Local-first semantic discovery plugin for Obsidian (related notes sidebar, interactive constellation star graph, and on-device WebGPU/WASM vector retrieval).
+- **Entry point**: `src/main.ts` compiled to `main.js` and loaded by Obsidian.
+- **Required release artifacts**: `main.js`, `manifest.json`, and `styles.css`.
 
 ## Environment & tooling
 
 - Node.js: use current LTS (Node 18+ recommended).
-- **Package manager: npm** (required for this sample - `package.json` defines npm scripts and dependencies).
-- **Bundler: esbuild** (required for this sample - `esbuild.config.mjs` and build scripts depend on it). Alternative bundlers like Rollup or webpack are acceptable for other projects if they bundle all external dependencies into `main.js`.
+- **Package manager: npm** (`package.json` defines npm scripts and dependencies).
+- **Bundler: esbuild** (`esbuild.config.mjs` bundles TypeScript and runtime dependencies into standalone `main.js`).
 - Types: `obsidian` type definitions.
-
-**Note**: This sample project has specific technical dependencies on npm and esbuild. If you're creating a plugin from scratch, you can choose different tools, but you'll need to replace the build configuration accordingly.
 
 ### Install
 
@@ -39,29 +37,25 @@ npm run build
 - Run `npm run lint` to lint the project.
 - A GitHub Action automatically lints every commit on all branches.
 
-## File & folder conventions
+## Architecture & file structure
 
-- **Organize code into multiple files**: Split functionality across separate modules rather than putting everything in `main.ts`.
-- Source lives in `src/`. Keep `main.ts` small and focused on plugin lifecycle (loading, unloading, registering commands).
-- **Example file structure**:
+- Source lives in `src/`. `main.ts` is minimal and focused on plugin lifecycle (loading, unloading, registering commands and views).
+- **Core modules**:
     ```
     src/
       main.ts           # Plugin entry point, lifecycle management
-      settings.ts       # Settings interface and defaults
-      commands/         # Command implementations
-        command1.ts
-        command2.ts
-      ui/              # UI components, modals, views
-        modal.ts
-        view.ts
-      utils/           # Utility functions, helpers
-        helpers.ts
-        constants.ts
-      types.ts         # TypeScript interfaces and types
+      brain.ts          # Orchestrator coordinating indexing, search, and models
+      settings.ts       # Settings interface, default configurations, and settings tab
+      plugin-name.ts    # Centralized display name helper
+      chunking/         # Semantic markdown chunking (sections, blocks, cleanup, split)
+      embed/            # ONNX Runtime Web / transformers.js WebGPU embedding & reranker pipelines
+      index/            # In-memory vector store, chunk index, persistence (vectors.bin, chunks.json)
+      search/           # Retrieval strategies (MaxSim, Focused, Broad), cross-encoder reranker, graph builder
+      ui/               # UI components: RelatedNotesView, snippet views, and ContextGraphModal / engine
+      utils/            # Logging, debouncing, file helpers
     ```
 - **Do not commit build artifacts**: Never commit `node_modules/`, `main.js`, or other generated files to version control.
-- Keep the plugin small. Avoid large dependencies. Prefer browser-compatible packages.
-- Generated output should be placed at the plugin root or `dist/` depending on your build setup. Release artifacts must end up at the top level of the plugin folder in the vault (`main.js`, `manifest.json`, `styles.css`).
+- All dependencies must be bundled into `main.js` (no unbundled runtime deps). Release artifacts must end up at the top level of the plugin folder in the vault (`main.js`, `manifest.json`, `styles.css`).
 
 ## Manifest rules (`manifest.json`)
 
