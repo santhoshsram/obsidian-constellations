@@ -908,7 +908,7 @@ export class ContextGraphEngine {
 				} else {
 					// Whisper-soft constellation hairline at rest (delicate ambient wallpaper)
 					strokeStyle = textMuted;
-					alpha = 0.16;
+					alpha = 0.10;
 				}
 			} else {
 				// Primary seed links: dynamic thickness strictly based on score
@@ -1002,7 +1002,7 @@ export class ContextGraphEngine {
 					strokeStyle = textMuted;
 					strokeWidth = 0.8;
 				} else {
-					nodeAlpha = 0.40;
+					nodeAlpha = 0.30;
 					fillStyle = canvasBg;
 					strokeStyle = textMuted;
 					strokeWidth = 1.0;
