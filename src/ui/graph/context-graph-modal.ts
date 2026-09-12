@@ -34,7 +34,7 @@ export class ContextGraphModal extends Modal {
 		super(app);
 		this.debouncedSearch = debounce((query: string) => {
 			void this.applySearchQuery(query);
-		}, 450);
+		}, 800);
 	}
 
 	onOpen(): void {
@@ -61,7 +61,7 @@ export class ContextGraphModal extends Modal {
 			cls: 'brain-context-graph-search-input',
 			attr: {
 				type: 'text',
-				placeholder: 'Search notes or concepts…',
+				placeholder: 'Search…',
 			},
 		});
 

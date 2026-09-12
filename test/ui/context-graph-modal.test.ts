@@ -91,13 +91,14 @@ describe('ContextGraphModal', () => {
 		expect(customClose).toBeNull();
 	});
 
-	it('seeds graph from query when search input changes after 450ms debounce', async () => {
+	it('seeds graph from query when search input changes after 800ms debounce', async () => {
 		modal.open();
 		await vi.runAllTimersAsync();
 
 		const searchInput = modal.contentEl.querySelector(
 			'.brain-context-graph-search-input',
-		) as unknown as MockElement & { value?: string };
+		) as unknown as MockElement & { value?: string; attributes?: Record<string, string> };
+		expect(searchInput.attributes?.placeholder).toBe('Search…');
 		searchInput.value = 'artificial intelligence';
 		// Trigger input event
 		const inputListeners = searchInput.eventListeners['input'] ?? [];
@@ -107,11 +108,11 @@ describe('ContextGraphModal', () => {
 
 		mockGetGraphData.mockClear();
 
-		// At 350ms (cognitive pause mid-typing): should NOT trigger yet
-		await vi.advanceTimersByTimeAsync(350);
+		// At 700ms (cognitive pause mid-typing): should NOT trigger yet
+		await vi.advanceTimersByTimeAsync(700);
 		expect(mockGetGraphData).not.toHaveBeenCalled();
 
-		// Fast-forward remaining 100ms (total 450ms): triggers search
+		// Fast-forward remaining 100ms (total 800ms): triggers search
 		await vi.advanceTimersByTimeAsync(100);
 
 		expect(vi.mocked(mockGetGraphData)).toHaveBeenCalledWith(

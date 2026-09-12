@@ -89,7 +89,7 @@ export class RelatedNotesView extends ItemView {
 		const isAttached =
 			Boolean(this.headerEl && this.bodyEl) &&
 			(typeof this.contentEl.contains === 'function'
-				? this.contentEl.contains(this.headerEl!) && this.contentEl.contains(this.bodyEl!)
+				? this.contentEl.contains(this.headerEl) && this.contentEl.contains(this.bodyEl)
 				: true);
 
 		if (!isAttached) {
