@@ -15,11 +15,12 @@ export {
 export type { TokenCounter } from './tokens';
 export { HeuristicTokenCounter } from './tokens';
 export {
-	MAX_TOKENS,
+	CHUNK_SPLIT_THRESHOLD,
+	CHUNK_TARGET_MAX,
 	MAX_RECURSION,
 	truncateSection,
 	halvedByDelimiter,
-	splitByMaxTokens,
+	forceSplitOversizedBlock,
 } from './split';
 export type { ParsedChunk } from './chunker';
 export { fileTitle, chunkMarkdown } from './chunker';

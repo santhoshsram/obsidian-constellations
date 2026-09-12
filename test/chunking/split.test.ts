@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
 	truncateSection,
 	halvedByDelimiter,
-	splitByMaxTokens,
+	forceSplitOversizedBlock,
+	MAX_RECURSION,
 } from '../../src/chunking/split';
 import type { TokenCounter } from '../../src/chunking/tokens';
 import { HeuristicTokenCounter } from '../../src/chunking/tokens';
@@ -51,9 +52,9 @@ describe('truncateSection', () => {
 	});
 });
 
-describe('splitByMaxTokens', () => {
+describe('forceSplitOversizedBlock', () => {
 	it('returns titles + text as a single chunk when within the limit', () => {
-		expect(splitByMaxTokens('Titles', 'short text', counter, 100)).toEqual([
+		expect(forceSplitOversizedBlock('Titles', 'short text', counter, 100, 100)).toEqual([
 			'Titles\nshort text',
 		]);
 	});
@@ -61,7 +62,7 @@ describe('splitByMaxTokens', () => {
 	it('splits oversized text so every chunk fits, keeping titles', () => {
 		const paragraph = 'x'.repeat(20);
 		const text = Array(8).fill(paragraph).join('\n\n'); // ~180 chars
-		const chunks = splitByMaxTokens('T', text, counter, 60);
+		const chunks = forceSplitOversizedBlock('T', text, counter, 60, 60);
 		expect(chunks.length).toBeGreaterThan(1);
 		for (const chunk of chunks) {
 			expect(chunk.startsWith('T\n')).toBe(true);
@@ -71,14 +72,14 @@ describe('splitByMaxTokens', () => {
 
 	it('truncates when no delimiter allows a split', () => {
 		const text = 'x'.repeat(100); // no \n\n, \n, '. ', or ' ' delimiters
-		const chunks = splitByMaxTokens('', text, counter, 10);
+		const chunks = forceSplitOversizedBlock('', text, counter, 10, 10);
 		expect(chunks).toHaveLength(1);
 		expect(chunks[0]).toHaveLength(10);
 	});
 
 	it('splits on space delimiter when no newlines or periods exist', () => {
 		const words = Array(20).fill('hello').join(' ');
-		const chunks = splitByMaxTokens('T', words, counter, 40);
+		const chunks = forceSplitOversizedBlock('T', words, counter, 40, 40);
 		expect(chunks.length).toBeGreaterThan(1);
 		for (const chunk of chunks) {
 			expect(chunk.startsWith('T\n')).toBe(true);
@@ -90,7 +91,7 @@ describe('splitByMaxTokens', () => {
 		const heuristic = new HeuristicTokenCounter();
 		expect(heuristic.count('abcd')).toBe(1);
 		expect(heuristic.count('abcde')).toBe(2);
-		const chunks = splitByMaxTokens('T', 'a'.repeat(100), heuristic, 10);
+		const chunks = forceSplitOversizedBlock('T', 'a'.repeat(100), heuristic, 10, 10);
 		expect(chunks[0]).toBeDefined();
 		expect(heuristic.count(chunks[0] ?? '')).toBeLessThanOrEqual(10);
 	});

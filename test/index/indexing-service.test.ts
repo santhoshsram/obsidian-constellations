@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { IndexingService } from '../../src/index/indexing-service';
+import { INDEXING_CONFIG } from '../../src/config';
 import type { VaultSource } from '../../src/index/indexing-service';
 import { ChunkIndex } from '../../src/index/chunk-index';
 import { BruteForceVectorStore } from '../../src/index/vector-store';
@@ -162,5 +163,43 @@ describe('IndexingService', () => {
 		service.removeFile('x.md');
 		expect(index.chunksForFile('x.md')).toEqual([]);
 		expect(service.getState().fileHashes['x.md']).toBeUndefined();
+	});
+
+	it('embeds batches concurrently up to INDEXING_CONFIG.embeddingConcurrency', async () => {
+		let activeCalls = 0;
+		let maxActiveCalls = 0;
+
+		const embedder = {
+			dimensions: 2,
+			calls: [] as string[][],
+			async embedDocuments(texts: string[]): Promise<Float32Array[]> {
+				activeCalls++;
+				if (activeCalls > maxActiveCalls) {
+					maxActiveCalls = activeCalls;
+				}
+				await new Promise((resolve) => setTimeout(resolve, 20));
+				activeCalls--;
+				return texts.map((_, idx) => new Float32Array([idx, 0]));
+			},
+			async embedQuery(): Promise<Float32Array> {
+				return new Float32Array([1, 0]);
+			},
+		};
+
+		const { service, index } = makeService(embedder);
+
+		// DEFAULT_MODEL has batchSize: 8. 40 sections -> 40 chunks -> 5 batches.
+		const sections = Array.from(
+			{ length: 40 },
+			(_, i) => `# Section ${i}\n${LONG} ${i}`,
+		).join('\n\n');
+
+		await service.indexFile('concurrent.md', sections);
+
+		expect(maxActiveCalls).toBeGreaterThan(1);
+		expect(maxActiveCalls).toBeLessThanOrEqual(INDEXING_CONFIG.embeddingConcurrency);
+
+		const chunks = index.chunksForFile('concurrent.md');
+		expect(chunks).toHaveLength(40);
 	});
 });

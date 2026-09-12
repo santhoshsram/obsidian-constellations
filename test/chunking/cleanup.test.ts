@@ -53,6 +53,38 @@ describe('flattenTable', () => {
 			'|\nx\nyz no pipe end',
 		);
 	});
+
+	it('handles loose pipe characters preceding a table without infinite recursion', () => {
+		const input =
+			'note with | loose | pipes here\n' +
+			'and some more text\n\n' +
+			'| Col 1 | Col 2 |\n' +
+			'|-------|-------|\n' +
+			'| a     | b     |\n\n' +
+			'after text';
+		const expected =
+			'note with | loose | pipes here\n' +
+			'and some more text\n\n' +
+			'\n' +
+			'a       b\n' +
+			'after text';
+		expect(flattenTable(input)).toBe(expected);
+	});
+
+	it('flattens multiple tables separated by loose pipes without rescanning from top', () => {
+		const input =
+			'| T1 | T2 |\n' +
+			'|---|---|\n' +
+			'| 1 | 2 |\n\n' +
+			'middle | loose | pipe line\n\n' +
+			'| T3 | T4 |\n' +
+			'|---|---|\n' +
+			'| 3 | 4 |\n';
+		const output = flattenTable(input);
+		expect(output).toContain('1   2');
+		expect(output).toContain('middle | loose | pipe line');
+		expect(output).toContain('3   4');
+	});
 });
 
 describe('stripMdMarkups', () => {

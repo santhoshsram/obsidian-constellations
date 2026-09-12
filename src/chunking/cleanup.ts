@@ -27,16 +27,18 @@ export function flattenTable(content: string): string {
 		return content;
 	}
 
-	let end = TABLE_END.exec(content);
+	const tail = content.slice(start.index);
+	let end = TABLE_END.exec(tail);
 	if (!end) {
-		end = TABLE_END_EOF.exec(content);
+		end = TABLE_END_EOF.exec(tail);
 	}
 	if (!end) {
 		// Tricky case: table beginning but no end. Leave content as-is.
 		return content;
 	}
 
-	const tableContent = content.slice(start.index, end.index + end[0].length);
+	const endIndex = start.index + end.index;
+	const tableContent = content.slice(start.index, endIndex + end[0].length);
 	const rowsStr =
 		'\n' +
 		tableContent
@@ -50,7 +52,7 @@ export function flattenTable(content: string): string {
 	return (
 		content.slice(0, start.index + 1) +
 		rowsStr +
-		flattenTable(content.slice(end.index + end[0].length))
+		flattenTable(content.slice(endIndex + end[0].length))
 	);
 }
 

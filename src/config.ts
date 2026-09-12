@@ -15,3 +15,11 @@ export const RETRIEVAL_CONFIG = {
 	 */
 	stage1CandidatePoolSize: 35,
 } as const;
+
+export const INDEXING_CONFIG = {
+	/**
+	 * Maximum number of concurrent embedding batches executed against
+	 * the WebGPU / ONNX embedding pipeline.
+	 */
+	embeddingConcurrency: 4,
+} as const;

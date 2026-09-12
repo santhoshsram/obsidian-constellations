@@ -8,7 +8,7 @@
 
 import { mdCleanup } from './cleanup';
 import { splitBySections } from './sections';
-import { splitByMaxTokens, MAX_TOKENS } from './split';
+import { forceSplitOversizedBlock } from './split';
 import { extractBlocks, groupBlocks } from './blocks';
 import type { TokenCounter } from './tokens';
 
@@ -38,6 +38,49 @@ export function fileTitle(filePath: string): string {
 	return base.replace(/\.[^/.]+$/, '');
 }
 
+const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---/;
+
+interface ExtractedFrontmatter {
+	rawFrontmatter: string;
+	title?: string;
+	bodyContent: string;
+	endLine: number;
+}
+
+function extractFrontmatter(content: string): ExtractedFrontmatter | null {
+	const match = FRONTMATTER_REGEX.exec(content);
+	if (!match) {
+		return null;
+	}
+
+	const raw = match[1] ?? '';
+	const fullMatch = match[0];
+	const bodyContent = content.slice(fullMatch.length);
+	const endLine = fullMatch.split('\n').length - 1;
+
+	let title: string | undefined;
+	const titleMatch = /^[ \t]*title:[ \t]*(.*?)[ \t]*$/m.exec(raw);
+	if (titleMatch) {
+		let val = titleMatch[1]?.trim() ?? '';
+		if (
+			(val.startsWith('"') && val.endsWith('"')) ||
+			(val.startsWith("'") && val.endsWith("'"))
+		) {
+			val = val.slice(1, -1).trim();
+		}
+		if (val.length > 0) {
+			title = val;
+		}
+	}
+
+	return {
+		rawFrontmatter: raw,
+		title,
+		bodyContent,
+		endLine,
+	};
+}
+
 /**
  * Parse a markdown note into embeddable chunks.
  *
@@ -49,13 +92,38 @@ export function chunkMarkdown(
 	filePath: string,
 	content: string,
 	counter: TokenCounter,
-	maxTokens: number = MAX_TOKENS,
 ): ParsedChunk[] {
-	const sections = splitBySections(content);
 	const filename = fileTitle(filePath);
+	const fm = extractFrontmatter(content);
+	const rootTitle = fm?.title ?? filename;
 
 	const chunks: ParsedChunk[] = [];
-	let searchOffset = 0;
+
+	if (fm && fm.rawFrontmatter.trim().length > 0) {
+		const cleaned = mdCleanup(fm.rawFrontmatter);
+		const titleContext = rootTitle;
+		for (const chunkText of forceSplitOversizedBlock(
+			titleContext,
+			cleaned,
+			counter,
+		)) {
+			chunks.push({
+				filePath,
+				headingPath: [rootTitle],
+				titleContext,
+				text: chunkText,
+				startLine: 0,
+				endLine: fm.endLine,
+			});
+		}
+	}
+
+	const bodyToSplit = fm ? fm.bodyContent : content;
+	const sections = splitBySections(bodyToSplit);
+	let searchOffset = fm ? content.indexOf(bodyToSplit) : 0;
+	if (searchOffset < 0) {
+		searchOffset = 0;
+	}
 
 	for (const [titles, text] of sections) {
 		const textIdx = content.indexOf(text, searchOffset);
@@ -68,8 +136,8 @@ export function chunkMarkdown(
 		// Filter empty breadcrumb entries (levels without a heading).
 		const headingPath = titles.filter((t) => t.length > 0);
 		const firstTitle = headingPath[0]?.trim().toLowerCase() ?? '';
-		if (!firstTitle.startsWith(filename.trim().toLowerCase())) {
-			headingPath.unshift(filename);
+		if (!firstTitle.startsWith(rootTitle.trim().toLowerCase())) {
+			headingPath.unshift(rootTitle);
 		}
 
 		const blocks = extractBlocks(text, baseLineOffset);
@@ -86,11 +154,10 @@ export function chunkMarkdown(
 			const titleContext = blockHeadingPath.join(' ');
 			const cleaned = mdCleanup(block.text);
 
-			for (const chunkText of splitByMaxTokens(
+			for (const chunkText of forceSplitOversizedBlock(
 				titleContext,
 				cleaned,
 				counter,
-				maxTokens,
 			)) {
 				chunks.push({
 					filePath,

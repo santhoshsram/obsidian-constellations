@@ -22,6 +22,7 @@ import { diffVaultFiles } from './vault-scan';
 import type { ChunkIndex } from './chunk-index';
 import type { IndexState } from './persistence';
 import type { Logger } from '../utils/logger';
+import { INDEXING_CONFIG } from '../config';
 
 export interface VaultSource {
 	listMarkdown(): Promise<string[]>;
@@ -72,7 +73,7 @@ export class IndexingService {
 		options: IndexingOptions = {},
 	) {
 		this.logger = logger ?? noopLogger;
-		this.slowFileMs = options.slowFileMs ?? 2000;
+		this.slowFileMs = options.slowFileMs ?? 1500;
 		this.heartbeatMs = options.heartbeatMs ?? 5000;
 	}
 
@@ -85,7 +86,6 @@ export class IndexingService {
 				path,
 				content,
 				this.counter,
-				this.model.maxTokensPerChunk,
 			);
 		} catch (e) {
 			this.logger.error(
@@ -116,10 +116,11 @@ export class IndexingService {
 
 		const total = chunkMs + embedMs;
 		if (total > this.slowFileMs) {
+			const msPerChunk = chunks.length ? Math.round(embedMs / chunks.length) : 0;
 			this.logger.debug(
 				`slow file ${path} chunks=${chunks.length} ` +
 					`chunkMs=${Math.round(chunkMs)} embedMs=${Math.round(embedMs)} ` +
-					`totalMs=${Math.round(total)}`,
+					`totalMs=${Math.round(total)} msPerChunk=${msPerChunk}`,
 				{ kind: 'slow-file' },
 			);
 		}
@@ -133,15 +134,28 @@ export class IndexingService {
 		const started = performance.now();
 		const batchSize = this.model.batchSize;
 		const totalBatches = Math.ceil(texts.length / batchSize);
-		const out: Float32Array[] = [];
+		const batches: string[][] = [];
 		for (let b = 0; b < totalBatches; b++) {
-			const batch = texts.slice(b * batchSize, (b + 1) * batchSize);
-			const vecs = await this.embedder.embedDocuments(batch);
-			out.push(...vecs);
+			batches.push(texts.slice(b * batchSize, (b + 1) * batchSize));
+		}
+
+		const concurrency = INDEXING_CONFIG.embeddingConcurrency;
+		const out: Float32Array[] = [];
+		let batchesDone = 0;
+
+		for (let i = 0; i < batches.length; i += concurrency) {
+			const windowBatches = batches.slice(i, i + concurrency);
+			const windowResults = await Promise.all(
+				windowBatches.map((batch) => this.embedder.embedDocuments(batch)),
+			);
+			for (const vecs of windowResults) {
+				out.push(...vecs);
+			}
+			batchesDone += windowBatches.length;
 			if (performance.now() - started > this.heartbeatMs) {
 				this.logger.debug(
-					`embedding ${path} batch ${b + 1}/${totalBatches} ` +
-						`(done=${(b + 1) * batch.length}/${texts.length}) ` +
+					`embedding ${path} batch ${batchesDone}/${totalBatches} ` +
+						`(done=${Math.min(batchesDone * batchSize, texts.length)}/${texts.length}) ` +
 						`elapsed=${Math.round(performance.now() - started)}ms`,
 				);
 			}
@@ -191,6 +205,8 @@ export class IndexingService {
 		let done = 0;
 		let indexed = 0;
 		for (const path of toIndex) {
+			progress?.(done, toIndex.length, path);
+			
 			const content = contents.get(path);
 			if (content !== undefined) {
 				try {
@@ -206,7 +222,6 @@ export class IndexingService {
 				}
 			}
 			done++;
-			progress?.(done, toIndex.length, path);
 		}
 
 		const summary: SyncResult = {

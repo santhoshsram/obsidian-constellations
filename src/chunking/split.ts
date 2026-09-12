@@ -8,8 +8,11 @@
 
 import type { TokenCounter } from './tokens';
 
-/** Matches the accio.ai default; nomic-embed-text-v1.5 allows 8192. */
-export const MAX_TOKENS = 2048;
+/** The absolute upper bound threshold. If a block is under this, it is completely untouched. */
+export const CHUNK_SPLIT_THRESHOLD = 400;
+
+/** The target upper bound for chunks that are forcefully chopped. */
+export const CHUNK_TARGET_MAX = 300;
 
 /** Recursion budget before falling back to truncation. */
 export const MAX_RECURSION = 5;
@@ -24,7 +27,7 @@ const DELIMITERS = ['\n\n', '\n', '. ', ' '];
 export function truncateSection(
 	text: string,
 	counter: TokenCounter,
-	maxTokens: number = MAX_TOKENS,
+	maxTokens: number = CHUNK_TARGET_MAX,
 ): string {
 	if (counter.count(text) <= maxTokens) {
 		return text;
@@ -78,26 +81,27 @@ export function halvedByDelimiter(
 }
 
 /**
- * If `text` (prefixed by `titles`) exceeds `maxTokens`, split it into
- * multiple chunks such that each has fewer than `maxTokens` tokens.
+ * If `text` (prefixed by `titles`) exceeds `threshold`, split it into
+ * multiple chunks such that each has fewer than `targetMax` tokens.
  * Every returned chunk includes the titles context on its first line.
  */
-export function splitByMaxTokens(
+export function forceSplitOversizedBlock(
 	titles: string,
 	text: string,
 	counter: TokenCounter,
-	maxTokens: number = MAX_TOKENS,
+	threshold: number = CHUNK_SPLIT_THRESHOLD,
+	targetMax: number = CHUNK_TARGET_MAX,
 	maxRecursion: number = MAX_RECURSION,
 ): string[] {
 	const fullText = titles + '\n' + text;
 	const numTokens = counter.count(fullText);
 
-	if (numTokens <= maxTokens) {
+	if (numTokens <= threshold) {
 		return [fullText];
 	}
 	if (maxRecursion === 0) {
 		// No split found within the recursion budget: truncate.
-		return [truncateSection(fullText, counter, maxTokens)];
+		return [truncateSection(fullText, counter, targetMax)];
 	}
 	for (const delimiter of DELIMITERS) {
 		const [left, right] = halvedByDelimiter(text, counter, delimiter);
@@ -108,11 +112,12 @@ export function splitByMaxTokens(
 		const results: string[] = [];
 		for (const half of [left, right]) {
 			results.push(
-				...splitByMaxTokens(
+				...forceSplitOversizedBlock(
 					titles,
 					half,
 					counter,
-					maxTokens,
+					targetMax, // For recursive chunks, the threshold becomes the targetMax!
+					targetMax,
 					maxRecursion - 1,
 				),
 			);
@@ -121,5 +126,5 @@ export function splitByMaxTokens(
 	}
 
 	// No split found at all; truncate. Should be a corner case.
-	return [truncateSection(fullText, counter, maxTokens)];
+	return [truncateSection(fullText, counter, targetMax)];
 }
