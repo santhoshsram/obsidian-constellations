@@ -131,29 +131,37 @@ All index data lives in `<Vault>/.obsidian/plugins/obsidian-brain/`:
 
 ## 5. Retrieval Architecture
 
-Retrieval uses a two-stage funnel designed to maximize precision while keeping latency low:
+Retrieval uses a two-stage funnel designed to maximize precision while keeping latency low. 
 
-```
-[ Active Note / Cursor ]
-         │
-         ▼
-┌────────────────────────────────────────────────────────┐
-│ Stage 1: Dense Vector Retrieval (All Chunks)           │
-│ - Detailed (MaxSim all-pairs cosine similarity)        │
-│ - Focused (Active cursor section chunk)                │
-│ - Broad (Document centroid mean vector)                │
-└────────────────────────────────────────────────────────┘
-         │
-         ▼ Top 35 Candidate Chunks
-┌────────────────────────────────────────────────────────┐
-│ Stage 2: Cross-Encoder Reranker (MiniLM L6 v2)         │
-│ - Parallel cached reads of candidate note slices       │
-│ - Single-batch WebGPU FP16 forward pass                │
-│ - Full query-document cross-attention scoring          │
-└────────────────────────────────────────────────────────┘
-         │
-         ▼ Top Reranked Notes
-[ Related Notes View ]
+Modern semantic search pipelines balance two competing forces: retrieval scale (searching 10,000+ chunks in milliseconds using fast vector cosine similarity) and semantic nuance (verifying relevance through deep token-to-token attention). Obsidian Brain solves this by casting a wide, fast net in Stage 1, and funneling the top candidates into a high-precision cross-encoder in Stage 2.
+
+```mermaid
+sequenceDiagram
+    participant User as Active Note / User
+    participant Brain as Brain.relatedTo()
+    participant VectorStore as ChunkIndex (Vector Store)
+    participant Rerank as rerankCandidateChunks()
+    participant Model as TransformersReranker (WebGPU)
+
+    User->>Brain: Open Note ("Alpha.md")
+    Brain->>VectorStore: Stage 1: Vector Search (MaxSim / Cosine)
+    VectorStore-->>Brain: Return all candidates (sorted by vector similarity)
+    
+    Note over Brain,Rerank: Funnel: Slice Top-35 candidates
+    Brain->>Rerank: Pass Top-35 + FileReader
+    
+    par Parallel Vault Reads
+        Rerank->>User: Read note text via app.vault.cachedRead()
+    end
+    
+    Rerank->>Rerank: Extract exact chunk line slices [startLine..endLine]
+    Rerank->>Model: Stage 2: Unified Batch Cross-Encoder Inference (FP16 WebGPU)
+    Model-->>Rerank: Return logits [-2.1, -4.9, -6.5, ...]
+    Rerank->>Rerank: Sort candidates descending by logit
+    Rerank-->>Brain: Return Top-35 sorted by cross-encoder score
+    
+    Brain->>Brain: Group by note & take top maxRelatedNotes
+    Brain-->>User: Display re-ranked notes in Related Notes view
 ```
 
 ### Stage 1: Vector Search Modes
