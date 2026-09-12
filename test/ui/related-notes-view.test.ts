@@ -487,4 +487,80 @@ describe('RelatedNotesView', () => {
 		const canvas = view.contentEl.querySelector('canvas');
 		expect(canvas).toBeDefined();
 	});
+
+	it('renders clean bullet points for section chunks instead of accordion chevrons', async () => {
+		const sampleResults: RelatedNote[] = [
+			{
+				filePath: 'Folder/Beta.md',
+				bestScore: 0.9,
+				chunks: [
+					{
+						score: 0.9,
+						record: {
+							id: '1',
+							filePath: 'Folder/Beta.md',
+							headingPath: ['Beta', 'Overview'],
+							startLine: 15,
+							endLine: 30,
+							text: 'Text',
+							titleContext: 'Overview',
+							vectorRow: 0,
+						},
+					},
+				],
+			},
+		];
+		mockRelatedTo.mockResolvedValue(sampleResults);
+
+		const view = new RelatedNotesView(mockLeaf, mockPlugin);
+		await view.refresh();
+
+		const bullet = view.contentEl.querySelector('.brain-related-section-bullet');
+		expect(bullet).not.toBeNull();
+		expect(bullet?.textContent).toContain('•');
+
+		// Chevron icon should NOT be present in section items
+		const chevron = view.contentEl.querySelector('.brain-related-section-icon svg');
+		expect(chevron).toBeNull();
+	});
+
+	it('instantly switches toggle button highlight and shows in-tab loading state on switch', async () => {
+		// Make getGraphData hang until resolved
+		let resolveGraph!: (data: any) => void;
+		mockGetGraphData.mockReturnValue(new Promise((res) => { resolveGraph = res; }));
+
+		const view = new RelatedNotesView(mockLeaf, mockPlugin);
+		await view.refresh(); // initial list view
+
+		const toggles = view.contentEl.querySelectorAll('.brain-view-toggle');
+		const listBtn = toggles[0] as unknown as { className: string };
+		const graphBtn = toggles[1] as unknown as { className: string; click: () => void };
+
+		expect(listBtn.className).toContain('is-active');
+		expect(graphBtn.className).not.toContain('is-active');
+
+		// Click Graph button
+		graphBtn.click();
+
+		// Immediately (synchronously), button state should have flipped
+		expect(graphBtn.className).toContain('is-active');
+		expect(listBtn.className).not.toContain('is-active');
+
+		// In-tab loading state should be displayed immediately
+		const loadingState = view.contentEl.querySelector('.brain-loading-state');
+		expect(loadingState).not.toBeNull();
+		expect(view.contentEl.querySelector('.brain-loading-text')?.textContent).toBe('Loading constellation…');
+
+		// Resolve graph data
+		resolveGraph({
+			seed: { type: 'note', path: 'Notes/Alpha.md' },
+			nodes: [{ id: 'Notes/Alpha.md', label: 'Alpha', isSeed: true, hop: 0, radius: 10 }],
+			edges: [],
+		});
+		await vi.advanceTimersByTimeAsync(0);
+
+		// Now canvas is rendered and loading state is cleared
+		expect(view.contentEl.querySelector('canvas')).toBeDefined();
+		expect(view.contentEl.querySelector('.brain-loading-state')).toBeNull();
+	});
 });

@@ -23,6 +23,12 @@ export class RelatedNotesView extends ItemView {
 	private mode: 'list' | 'graph' = 'list';
 	private graphEngine: ContextGraphEngine | null = null;
 
+	private headerEl: HTMLElement | null = null;
+	private listBtn: HTMLButtonElement | null = null;
+	private graphBtn: HTMLButtonElement | null = null;
+	private bodyEl: HTMLElement | null = null;
+	private currentRequestId = 0;
+
 	constructor(leaf: WorkspaceLeaf, plugin: ObsidianBrainPlugin) {
 		super(leaf);
 		this.plugin = plugin;
@@ -79,41 +85,70 @@ export class RelatedNotesView extends ItemView {
 		}
 	}
 
+	private ensureLayout(): void {
+		const isAttached =
+			Boolean(this.headerEl && this.bodyEl) &&
+			(typeof this.contentEl.contains === 'function'
+				? this.contentEl.contains(this.headerEl!) && this.contentEl.contains(this.bodyEl!)
+				: true);
+
+		if (!isAttached) {
+			this.contentEl.empty();
+			this.headerEl = this.contentEl.createDiv({
+				cls: 'brain-view-header',
+			});
+			const toggleGroup = this.headerEl.createDiv({
+				cls: 'brain-view-toggle-group',
+			});
+			this.listBtn = toggleGroup.createEl('button', {
+				cls: `brain-view-toggle ${this.mode === 'list' ? 'is-active' : ''}`,
+				text: 'List',
+			});
+			this.graphBtn = toggleGroup.createEl('button', {
+				cls: `brain-view-toggle ${this.mode === 'graph' ? 'is-active' : ''}`,
+				text: 'Graph',
+			});
+
+			this.listBtn.addEventListener('click', () => {
+				if (this.mode !== 'list') {
+					void this.setMode('list');
+				}
+			});
+
+			this.graphBtn.addEventListener('click', () => {
+				if (this.mode !== 'graph') {
+					void this.setMode('graph');
+				}
+			});
+
+			this.bodyEl = this.contentEl.createDiv({
+				cls: 'brain-view-body',
+			});
+		} else {
+			this.listBtn?.toggleClass('is-active', this.mode === 'list');
+			this.graphBtn?.toggleClass('is-active', this.mode === 'graph');
+		}
+	}
+
 	private renderHeader(): HTMLElement {
-		const headerEl = this.contentEl.createDiv({
-			cls: 'brain-view-header',
-		});
-		const toggleGroup = headerEl.createDiv({
-			cls: 'brain-view-toggle-group',
-		});
-		const listBtn = toggleGroup.createEl('button', {
-			cls: `brain-view-toggle ${this.mode === 'list' ? 'is-active' : ''}`,
-			text: 'List',
-		});
-		const graphBtn = toggleGroup.createEl('button', {
-			cls: `brain-view-toggle ${this.mode === 'graph' ? 'is-active' : ''}`,
-			text: 'Graph',
-		});
-
-		listBtn.addEventListener('click', () => {
-			if (this.mode !== 'list') {
-				void this.setMode('list');
-			}
-		});
-
-		graphBtn.addEventListener('click', () => {
-			if (this.mode !== 'graph') {
-				void this.setMode('graph');
-			}
-		});
-
-		return headerEl;
+		this.ensureLayout();
+		return this.headerEl!;
 	}
 
 	async setMode(mode: 'list' | 'graph'): Promise<void> {
+		if (this.mode === mode) return;
 		this.mode = mode;
 		this.plugin.settings.sidebarViewMode = mode;
-		await this.plugin.saveSettings();
+		void this.plugin.saveSettings();
+
+		// Instantly update button selection in UI
+		this.ensureLayout();
+
+		// Instantly render in-tab loading state
+		this.renderLoading(
+			mode === 'graph' ? 'Loading constellation…' : 'Finding related notes…',
+		);
+
 		await this.refresh();
 	}
 
@@ -124,11 +159,30 @@ export class RelatedNotesView extends ItemView {
 		}
 	}
 
-	renderEmptyState(message: string): void {
+	renderLoading(message: string): void {
+		this.ensureLayout();
 		this.cleanupGraph();
-		this.contentEl.empty();
-		this.renderHeader();
-		const container = this.contentEl.createDiv({
+		this.bodyEl!.empty();
+		const container = this.bodyEl!.createDiv({
+			cls: 'brain-empty-state-container',
+		});
+		const loadingBox = container.createDiv({
+			cls: 'brain-loading-state',
+		});
+		loadingBox.createDiv({
+			cls: 'brain-loading-spinner',
+		});
+		loadingBox.createDiv({
+			cls: 'brain-loading-text',
+			text: message,
+		});
+	}
+
+	renderEmptyState(message: string): void {
+		this.ensureLayout();
+		this.cleanupGraph();
+		this.bodyEl!.empty();
+		const container = this.bodyEl!.createDiv({
 			cls: 'brain-empty-state-container',
 		});
 		container.createDiv({
@@ -138,7 +192,9 @@ export class RelatedNotesView extends ItemView {
 	}
 
 	async refresh(): Promise<void> {
+		const reqId = ++this.currentRequestId;
 		this.mode = this.plugin.settings.sidebarViewMode ?? 'list';
+		this.ensureLayout();
 		const brain = this.plugin.brain;
 		if (!brain.isReady) {
 			const embStatus = brain.embeddingStatus;
@@ -189,10 +245,14 @@ export class RelatedNotesView extends ItemView {
 		}
 
 		if (this.mode === 'graph') {
+			if (!this.bodyEl?.querySelector('.brain-loading-state')) {
+				this.renderLoading('Loading constellation…');
+			}
 			const graphData = await brain.getGraphData({
 				type: 'note',
 				path: file.path,
 			});
+			if (reqId !== this.currentRequestId) return;
 			if (graphData.nodes.length === 0) {
 				this.renderEmptyState('No related notes found');
 				return;
@@ -201,6 +261,9 @@ export class RelatedNotesView extends ItemView {
 			return;
 		}
 
+		if (!this.bodyEl?.querySelector('.brain-loading-state')) {
+			this.renderLoading('Finding related notes…');
+		}
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		const cursorLine = activeView?.editor?.getCursor?.()?.line;
 		const cursorHeading =
@@ -214,6 +277,7 @@ export class RelatedNotesView extends ItemView {
 			cursorLine,
 			cursorHeading,
 		});
+		if (reqId !== this.currentRequestId) return;
 
 		if (related.length === 0) {
 			this.renderEmptyState('No related notes found');
@@ -224,10 +288,10 @@ export class RelatedNotesView extends ItemView {
 	}
 
 	private renderGraph(data: GraphData): void {
+		this.ensureLayout();
 		this.cleanupGraph();
-		this.contentEl.empty();
-		this.renderHeader();
-		const graphContainer = this.contentEl.createDiv({
+		this.bodyEl!.empty();
+		const graphContainer = this.bodyEl!.createDiv({
 			cls: 'brain-context-graph-sidebar-container',
 		});
 
@@ -250,10 +314,10 @@ export class RelatedNotesView extends ItemView {
 	}
 
 	private renderResults(related: RelatedNote[]): void {
+		this.ensureLayout();
 		this.cleanupGraph();
-		this.contentEl.empty();
-		this.renderHeader();
-		const listEl = this.contentEl.createDiv({
+		this.bodyEl!.empty();
+		const listEl = this.bodyEl!.createDiv({
 			cls: 'brain-related-notes',
 		});
 
@@ -294,10 +358,10 @@ export class RelatedNotesView extends ItemView {
 					cls: 'brain-related-section-item',
 				});
 
-				const chevEl = sectionItemEl.createSpan({
-					cls: 'brain-related-section-icon',
+				sectionItemEl.createSpan({
+					cls: 'brain-related-section-bullet',
+					text: '•',
 				});
-				setIcon(chevEl, 'chevron-right');
 
 				const { label } = getSectionDisplay(chunk.record);
 				sectionItemEl.createSpan({

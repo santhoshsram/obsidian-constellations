@@ -79,6 +79,17 @@ export class MockElement {
 		return child;
 	}
 
+	contains(other: MockElement | null | undefined): boolean {
+		if (!other) return false;
+		if (other === this) return true;
+		let curr = other.parentElement;
+		while (curr) {
+			if (curr === this) return true;
+			curr = curr.parentElement;
+		}
+		return false;
+	}
+
 	remove() {
 		if (this.parentElement) {
 			const idx = this.parentElement.children.indexOf(this);
