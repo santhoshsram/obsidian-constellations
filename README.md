@@ -16,8 +16,11 @@ Local-first semantic retrieval and discovery for Obsidian. Constellations indexe
 ![Graph in Sidebar](assets/sidebar.png)
 *You can also open the Constellation Graph in the sidebar to keep it visible while exploring your vault.*
 
-![Settings](assets/settings.png)
-*Fine-tune the embedding model, reranking model, and search sensitivity directly in the plugin settings. All processing happens 100% locally.*
+![Plugin Settings - Models and Matching](assets/settings-1.png)
+*Select the local embedding model and choose your semantic matching mode.*
+
+![Plugin Settings - Retrieval Tuning](assets/settings-2.png)
+*Fine-tune similarity thresholds, result limits, and tab behaviors.*
 
 ## Highlights
 

@@ -304,6 +304,7 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 		});
 
 		new Setting(containerEl)
+			.setClass('brain-matching-setting')
 			.setName('Matching mode')
 			.setDesc(strategyDesc)
 			.addDropdown((dropdown) => {
