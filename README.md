@@ -7,20 +7,29 @@ Local-first semantic retrieval and discovery for Obsidian. Constellations indexe
 
 ## Screenshots
 
+### Interactive Constellation Graph
+The interactive star-topology graph showing related concepts orbiting your current note.
+
 ![Constellation Graph](assets/graph.png)
-*The interactive Constellation Graph showing related concepts orbiting your current note.*
+
+### Related Notes Sidebar
+Surfaces semantically relevant notes and exact matching passages in real time as you write.
 
 ![Related Notes Sidebar](assets/related.png)
-*The Related Notes view automatically surfaces semantically relevant notes and exact matching passages as you write.*
+
+### Constellation Graph in Sidebar
+Dock the constellation graph in the sidebar to keep semantic context visible while exploring notes.
 
 ![Graph in Sidebar](assets/sidebar.png)
-*You can also open the Constellation Graph in the sidebar to keep it visible while exploring your vault.*
+
+### Plugin Settings
+Select your local embedding model, view reranker status, and choose your semantic matching mode.
 
 ![Plugin Settings - Models and Matching](assets/settings-1.png)
-*Select the local embedding model and choose your semantic matching mode.*
+
+Fine-tune similarity thresholds, result limits, and tab behaviors.
 
 ![Plugin Settings - Retrieval Tuning](assets/settings-2.png)
-*Fine-tune similarity thresholds, result limits, and tab behaviors.*
 
 ## Highlights
 
