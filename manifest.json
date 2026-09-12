@@ -1,7 +1,7 @@
 {
 	"id": "constellations",
 	"name": "Constellations",
-	"version": "0.1.0",
+	"version": "1.0.0",
 	"minAppVersion": "1.7.2",
 	"description": "Local-first semantic constellations: related notes, interactive star graph, and concept search — all on-device.",
 	"author": "Santhosh Sundararaman",
