@@ -17,12 +17,15 @@ export class ContextGraphModal extends Modal {
 	private currentCenterPath: string | null = null;
 	private currentCenterLabel = '';
 
+	private searchWrapper!: HTMLElement;
 	private searchInput!: HTMLInputElement;
+	private searchClearBtn!: HTMLElement;
 	private centerTitleEl!: HTMLElement;
 	private openButtonEl!: HTMLElement;
 	private emptyStateEl!: HTMLElement;
 
 	private debouncedSearch: DebouncedFn<[string]>;
+	private currentSearchRequestId = 0;
 
 	constructor(
 		app: App,
@@ -31,7 +34,7 @@ export class ContextGraphModal extends Modal {
 		super(app);
 		this.debouncedSearch = debounce((query: string) => {
 			void this.applySearchQuery(query);
-		}, 300);
+		}, 450);
 	}
 
 	onOpen(): void {
@@ -46,15 +49,15 @@ export class ContextGraphModal extends Modal {
 		});
 
 		// Left: Search input
-		const searchWrapper = headerEl.createDiv({
+		this.searchWrapper = headerEl.createDiv({
 			cls: 'brain-context-graph-search-container',
 		});
-		const searchIconEl = searchWrapper.createSpan({
+		const searchIconEl = this.searchWrapper.createSpan({
 			cls: 'brain-context-graph-search-icon',
 		});
 		setIcon(searchIconEl, 'search');
 
-		this.searchInput = searchWrapper.createEl('input', {
+		this.searchInput = this.searchWrapper.createEl('input', {
 			cls: 'brain-context-graph-search-input',
 			attr: {
 				type: 'text',
@@ -62,10 +65,46 @@ export class ContextGraphModal extends Modal {
 			},
 		});
 
+		this.searchClearBtn = this.searchWrapper.createSpan({
+			cls: 'brain-context-graph-search-clear is-hidden',
+		});
+		setIcon(this.searchClearBtn, 'x');
+		this.searchClearBtn.addEventListener('click', () => {
+			this.searchInput.value = '';
+			this.updateClearButton();
+			this.debouncedSearch.cancel();
+			void this.applySearchQuery('');
+			this.searchInput.focus();
+		});
+
 		this.searchInput.addEventListener('input', (e: Event) => {
 			const target = e.target as HTMLInputElement;
-			const val = target?.value?.trim() ?? '';
-			this.debouncedSearch(val);
+			const val = target?.value ?? '';
+			this.updateClearButton();
+			const trimmed = val.trim();
+			if (!trimmed) {
+				this.debouncedSearch.cancel();
+				void this.applySearchQuery('');
+			} else {
+				this.debouncedSearch(trimmed);
+			}
+		});
+
+		this.searchInput.addEventListener('keydown', (e: KeyboardEvent) => {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				this.debouncedSearch.cancel();
+				const val = this.searchInput.value.trim();
+				void this.applySearchQuery(val);
+			} else if (e.key === 'Escape') {
+				if (this.searchInput.value) {
+					e.stopPropagation();
+					this.searchInput.value = '';
+					this.updateClearButton();
+					this.debouncedSearch.cancel();
+					void this.applySearchQuery('');
+				}
+			}
 		});
 
 		// Right: Active node badge + Open note button
@@ -115,9 +154,19 @@ export class ContextGraphModal extends Modal {
 		}
 	}
 
+	private updateClearButton(): void {
+		if (this.searchInput.value.length > 0) {
+			this.searchClearBtn.removeClass('is-hidden');
+		} else {
+			this.searchClearBtn.addClass('is-hidden');
+		}
+	}
+
 	private handleNodeClick(node: GraphNode): void {
 		if (node.filePath && !node.isSeed) {
 			this.searchInput.value = '';
+			this.updateClearButton();
+			this.debouncedSearch.cancel();
 			this.engine?.optimisticFocus(node.id, node.label);
 			this.setCenterBadge(node.label, node.filePath);
 			void this.reseed({ type: 'note', path: node.filePath });
@@ -131,20 +180,33 @@ export class ContextGraphModal extends Modal {
 	}
 
 	private async applySearchQuery(query: string): Promise<void> {
-		if (!query) {
-			const activeFile = this.app.workspace.getActiveFile();
-			if (activeFile) {
-				await this.reseed({ type: 'note', path: activeFile.path });
-			} else {
-				this.showEmptyState('Type a query to explore semantic connections');
-			}
-			return;
-		}
+		const requestId = ++this.currentSearchRequestId;
+		this.searchWrapper?.addClass?.('is-loading');
 
-		await this.reseed({ type: 'query', query });
+		try {
+			if (!query) {
+				const activeFile = this.app.workspace.getActiveFile();
+				if (activeFile) {
+					await this.reseed({ type: 'note', path: activeFile.path }, requestId);
+				} else {
+					this.showEmptyState('Type a query to explore semantic connections');
+				}
+				return;
+			}
+
+			// Optimistic canvas focus: show radiating pulse around query node
+			this.engine?.optimisticFocus('__query__', `"${query}"`);
+			this.setCenterBadge(`"${query}"`, null);
+
+			await this.reseed({ type: 'query', query }, requestId);
+		} finally {
+			if (requestId === this.currentSearchRequestId) {
+				this.searchWrapper?.removeClass?.('is-loading');
+			}
+		}
 	}
 
-	private async reseed(seed: GraphSeed): Promise<void> {
+	private async reseed(seed: GraphSeed, requestId?: number): Promise<void> {
 		this.currentSeed = seed;
 		const brain = this.plugin.brain;
 		if (!brain.isReady) {
@@ -153,6 +215,9 @@ export class ContextGraphModal extends Modal {
 		}
 
 		const data: GraphData = await brain.getGraphData(seed);
+		if (requestId !== undefined && requestId !== this.currentSearchRequestId) {
+			return;
+		}
 		if (data.nodes.length === 0) {
 			if (seed.type === 'note') {
 				this.showEmptyState('Note not found in index or has no content');

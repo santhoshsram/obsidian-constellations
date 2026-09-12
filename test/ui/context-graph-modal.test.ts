@@ -91,7 +91,7 @@ describe('ContextGraphModal', () => {
 		expect(customClose).toBeNull();
 	});
 
-	it('seeds graph from query when search input changes', async () => {
+	it('seeds graph from query when search input changes after 450ms debounce', async () => {
 		modal.open();
 		await vi.runAllTimersAsync();
 
@@ -105,12 +105,112 @@ describe('ContextGraphModal', () => {
 			fn({ target: searchInput });
 		}
 
-		// Fast-forward debounce timer
-		await vi.advanceTimersByTimeAsync(400);
+		mockGetGraphData.mockClear();
+
+		// At 350ms (cognitive pause mid-typing): should NOT trigger yet
+		await vi.advanceTimersByTimeAsync(350);
+		expect(mockGetGraphData).not.toHaveBeenCalled();
+
+		// Fast-forward remaining 100ms (total 450ms): triggers search
+		await vi.advanceTimersByTimeAsync(100);
 
 		expect(vi.mocked(mockGetGraphData)).toHaveBeenCalledWith(
 			expect.objectContaining({ type: 'query', query: 'artificial intelligence' }),
 		);
+	});
+
+	it('immediately searches on Enter key without waiting for debounce', async () => {
+		modal.open();
+		await vi.runAllTimersAsync();
+
+		const searchInput = modal.contentEl.querySelector(
+			'.brain-context-graph-search-input',
+		) as unknown as MockElement & { value?: string };
+		searchInput.value = 'instant search query';
+
+		mockGetGraphData.mockClear();
+
+		// Trigger keydown Enter
+		const keydownListeners = searchInput.eventListeners['keydown'] ?? [];
+		for (const fn of keydownListeners) {
+			fn({ key: 'Enter', preventDefault: vi.fn() });
+		}
+
+		// 0ms delay: should have executed immediately
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(vi.mocked(mockGetGraphData)).toHaveBeenCalledWith(
+			expect.objectContaining({ type: 'query', query: 'instant search query' }),
+		);
+	});
+
+	it('shows clear button when text is entered and clears instantly on click', async () => {
+		modal.open();
+		await vi.runAllTimersAsync();
+
+		const searchInput = modal.contentEl.querySelector(
+			'.brain-context-graph-search-input',
+		) as unknown as MockElement & { value?: string; focus: () => void };
+		searchInput.focus = vi.fn();
+		const clearBtn = modal.contentEl.querySelector('.brain-context-graph-search-clear') as unknown as MockElement;
+
+		expect(clearBtn.className).toContain('is-hidden');
+
+		// Enter text
+		searchInput.value = 'something';
+		for (const fn of searchInput.eventListeners['input'] ?? []) {
+			fn({ target: searchInput });
+		}
+		expect(clearBtn.className).not.toContain('is-hidden');
+
+		mockGetGraphData.mockClear();
+
+		// Click clear button
+		clearBtn.click();
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(searchInput.value).toBe('');
+		expect(clearBtn.className).toContain('is-hidden');
+		expect(searchInput.focus).toHaveBeenCalled();
+
+		// Reseeds immediately to active note
+		expect(vi.mocked(mockGetGraphData)).toHaveBeenCalledWith(
+			expect.objectContaining({ type: 'note', path: 'Active.md' }),
+		);
+	});
+
+	it('toggles is-loading class on search container while query is executing', async () => {
+		let resolveQuery!: (data: any) => void;
+		mockGetGraphData.mockReturnValue(new Promise((res) => { resolveQuery = res; }));
+
+		modal.open();
+		await vi.runAllTimersAsync();
+
+		const searchContainer = modal.contentEl.querySelector('.brain-context-graph-search-container');
+		const searchInput = modal.contentEl.querySelector(
+			'.brain-context-graph-search-input',
+		) as unknown as MockElement & { value?: string };
+		searchInput.value = 'deep learning';
+
+		// Trigger Enter
+		for (const fn of searchInput.eventListeners['keydown'] ?? []) {
+			fn({ key: 'Enter', preventDefault: vi.fn() });
+		}
+		await vi.advanceTimersByTimeAsync(0);
+
+		// Container should have is-loading class
+		expect(searchContainer?.className).toContain('is-loading');
+
+		// Resolve query
+		resolveQuery({
+			seed: { type: 'query', query: 'deep learning' },
+			nodes: [{ id: '__query__', label: '"deep learning"', isSeed: true, hop: 0, radius: 10 }],
+			edges: [],
+		});
+		await vi.advanceTimersByTimeAsync(0);
+
+		// Container should remove is-loading class
+		expect(searchContainer?.className).not.toContain('is-loading');
 	});
 
 	it('focuses existing tab if note is already open in a markdown leaf without closing modal', async () => {

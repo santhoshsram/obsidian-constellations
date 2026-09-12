@@ -87,4 +87,27 @@ describe('getSectionDisplay', () => {
 			isHeading: false,
 		});
 	});
+
+	it('strips redundant note title prefix from chunk text snippet', () => {
+		const result = getSectionDisplay({
+			headingPath: ['Interesting Papers'],
+			titleContext: 'Interesting Papers',
+			text: 'Interesting Papers\n distilling step-by-step! outperforming large models on benchmarks.',
+		});
+		expect(result).toEqual({
+			label: 'Distilling step-by-step! outperforming large models on benchmarks.',
+			isHeading: false,
+		});
+	});
+
+	it('strips note title prefix followed by hyphen or colon', () => {
+		const result = getSectionDisplay({
+			headingPath: ['Notes on Memory'],
+			text: 'Notes on Memory - memories trigger through similarity and emotional salience.',
+		});
+		expect(result).toEqual({
+			label: 'Memories trigger through similarity and emotional salience.',
+			isHeading: false,
+		});
+	});
 });
