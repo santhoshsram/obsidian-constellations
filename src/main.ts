@@ -25,7 +25,7 @@ export default class ObsidianBrainPlugin extends Plugin {
 		this.statusBarEl = this.addStatusBarItem();
 		this.setStatus('');
 
-		this.addRibbonIcon('brain-circuit', 'Open context graph', () => {
+		this.addRibbonIcon('brain-circuit', 'Open constellation graph', () => {
 			new ContextGraphModal(this.app, this).open();
 		});
 
@@ -51,8 +51,8 @@ export default class ObsidianBrainPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: 'open-context-graph',
-			name: 'Open context graph',
+			id: 'open-constellation-graph',
+			name: 'Open constellation graph',
 			callback: () => {
 				new ContextGraphModal(this.app, this).open();
 			},

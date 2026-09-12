@@ -74,7 +74,7 @@ export class ContextGraphModal extends Modal {
 		});
 		this.centerTitleEl = centerWrapper.createSpan({
 			cls: 'brain-context-graph-center-title',
-			text: 'Context Graph',
+			text: 'Constellation Graph',
 		});
 		this.openButtonEl = centerWrapper.createEl('button', {
 			cls: 'brain-context-graph-open-btn',

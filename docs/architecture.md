@@ -1,15 +1,16 @@
-# Obsidian Brain — Technical Architecture
+# Constellations — Technical Architecture
 
-Obsidian Brain is a local-first semantic retrieval plugin for Obsidian. It indexes vault notes into content-addressed semantic chunks, computes vector embeddings fully on-device, and surfaces relevant notes using two-stage retrieval (dense vector search funneled into a cross-encoder reranker).
+Constellations is a local-first semantic retrieval and discovery plugin for Obsidian. It indexes vault notes into content-addressed semantic chunks, computes vector embeddings fully on-device, and surfaces relevant notes using two-stage retrieval (dense vector search funneled into a cross-encoder reranker).
 
 ---
 
 ## 1. Principles
 
-- **Local-first & Private:** All embeddings and reranking inference execute on-device via WebGPU/WASM. The only network call is a one-time download of model weights from Hugging Face on initial setup. Vault contents never leave the local machine.
+- **Local-First & Private:** All embeddings and reranking inference execute on-device via WebGPU/WASM. The only network call is a one-time download of model weights from Hugging Face on initial setup. Vault contents never leave the local machine. Zero telemetry, zero cloud dependencies, zero external API keys.
 - **Zero Text Duplication:** Note text is never duplicated inside index files. The index stores structural metadata and line coordinates; chunk text is read on demand from vault files.
 - **Event-Driven Freshness:** Vault changes (`create`, `modify`, `delete`, `rename`) trigger incremental re-indexing via debounced file events.
-- **Desktop-first:** Targeted at desktop platforms running Obsidian on Electron with WebGPU support.
+- **Desktop-First:** Targeted at desktop platforms running Obsidian on Electron with WebGPU support.
+- **Clean Lifecycle:** All event listeners, DOM elements, and intervals register via Obsidian's `register*` helpers for leak-free plugin unloads.
 
 ---
 
@@ -24,7 +25,7 @@ Obsidian Brain is a local-first semantic retrieval plugin for Obsidian. It index
 | **Default Reranker** | `Xenova/ms-marco-MiniLM-L-6-v2` | 22M cross-encoder, fp16/fp32 WebGPU |
 | **Alternative Reranker** | `Alibaba-NLP/gte-reranker-modernbert-base` | ModernBERT 150M cross-encoder |
 | **Vector Store** | In-memory brute-force cosine search | Flat contiguous `Float32Array` buffer |
-| **Persistence** | Vault adapter (`.obsidian/plugins/obsidian-brain/`) | `vectors.bin`, `chunks.json`, `state.json` |
+| **Persistence** | Vault adapter (`.obsidian/plugins/constellations/`) | `vectors.bin`, `chunks.json`, `state.json` |
 
 ### Electron & WebGPU Runtime Bridge
 Obsidian's Electron renderer includes Node integration, which can cause web-targeted libraries to misidentify the runtime. To ensure `@huggingface/transformers` activates its browser/WebGPU backend (`onnxruntime-web`) rather than Node stubs, the plugin imports `onnxruntime-web/webgpu`, clears the global runtime symbol, and isolates the dynamic import of transformers.js. All execution occurs strictly on-device through browser-compatible APIs.
@@ -104,15 +105,15 @@ Markdown notes are parsed hierarchically into bounded semantic blocks with line 
    - Small adjacent blocks (< 80 tokens) under the same heading are merged up to ~250 tokens to retain semantic context.
    - Substantial blocks (≥ 80 tokens) remain standalone chunks.
 
-4. **Sanitization & Bounding (`mdCleanup` & `splitByMaxTokens`):**
+4. **Sanitization & Bounding (`mdCleanup` & `forceSplitOversizedBlock`):**
    - Tables are flattened, markdown syntax stripped, whitespace normalized.
-   - Oversized blocks exceeding model context (2,048 tokens) are recursively split on natural delimiters (`\n\n` → `\n` → `. ` → ` `).
+   - Blocks exceeding the chunk threshold (`CHUNK_SPLIT_THRESHOLD = 400` tokens) are recursively split on natural delimiters (`\n\n` → `\n` → `. ` → ` `) down to the target bound (`CHUNK_TARGET_MAX = 300` tokens) to preserve semantic coherence and prevent attention bottlenecks during embedding inference.
 
 ---
 
 ## 4. Indexing & Storage
 
-All index data lives in `<Vault>/.obsidian/plugins/obsidian-brain/`:
+All index data lives in `<Vault>/.obsidian/plugins/constellations/`:
 
 - **`vectors.bin`:** Contiguous binary `Float32Array` of size `(N_chunks × dimensions)`. Row index maps directly to chunk vector.
 - **`chunks.json`:** Array of `ChunkRecord` metadata objects (content hash ID, file path, heading path, startLine, endLine, vectorRow).
@@ -133,7 +134,7 @@ All index data lives in `<Vault>/.obsidian/plugins/obsidian-brain/`:
 
 Retrieval uses a two-stage funnel designed to maximize precision while keeping latency low. 
 
-Modern semantic search pipelines balance two competing forces: retrieval scale (searching 10,000+ chunks in milliseconds using fast vector cosine similarity) and semantic nuance (verifying relevance through deep token-to-token attention). Obsidian Brain solves this by casting a wide, fast net in Stage 1, and funneling the top candidates into a high-precision cross-encoder in Stage 2.
+Modern semantic search pipelines balance two competing forces: retrieval scale (searching 10,000+ chunks in milliseconds using fast vector cosine similarity) and semantic nuance (verifying relevance through deep token-to-token attention). Constellations solves this by casting a wide, fast net in Stage 1, and funneling the top candidates into a high-precision cross-encoder in Stage 2.
 
 ```mermaid
 sequenceDiagram
@@ -182,11 +183,3 @@ sequenceDiagram
 - **Inference:** Evaluates `(source_text, candidate_text)` pairs in a single batch (`batchSize: 50`) using `Xenova/ms-marco-MiniLM-L-6-v2` on WebGPU with FP16 precision (falling back to FP32).
 - **Rescoring & Grouping:** Replaces Stage 1 cosine scores with cross-encoder relevance logits, groups candidate chunks by parent note, applies `maxChunksPerNote`, and outputs top related notes.
 - **Graceful Fallback:** If WebGPU or the reranker pipeline encounters an issue, retrieval automatically falls back to Stage 1 vector scores without interrupting the user.
-
----
-
-## 6. Security & Privacy
-
-- **100% On-Device:** Zero telemetry, zero cloud dependencies, zero external API keys.
-- **Model Downloads:** Models download once directly from Hugging Face Hub on first selection and are cached locally via browser Cache API. Disclosed in settings and documentation.
-- **Lifecycle Cleanup:** All event listeners, DOM elements, and intervals register via Obsidian's `register*` helpers for clean unloads.

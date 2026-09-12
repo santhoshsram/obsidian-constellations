@@ -1,47 +1,44 @@
-# Obsidian Brain
+# Constellations
 
-A local-first "second brain" plugin for Obsidian. It indexes your notes
-into semantic chunks, embeds them entirely on-device, and surfaces the
-notes — and the exact sections within them — most related to whatever
-you're currently viewing. Semantic graph and chat features follow in
-later phases.
+Local-first semantic retrieval and discovery for Obsidian. Constellations indexes your vault on-device into semantic chunks and surfaces related notes, ideas, and passages through focused, contextual exploration.
 
-**Status: early development.** See [docs/roadmap.md](docs/roadmap.md)
-for the plan and [docs/architecture.md](docs/architecture.md) for the
-technical design.
+## Highlights
+
+- **Related Notes View:** Surfaces semantically relevant notes and exact matching passages in real time as you write.
+- **Constellation Graph:** An interactive star-topology graph with physics-based semantic distance, optimistic centering, and hover sneak-peeks.
+- **Two-Stage Funnel:** Dense vector retrieval refined by an on-device cross-encoder reranker for high precision.
+- **100% Local & Private:** Runs entirely on-device via WebGPU/WASM. Zero telemetry, no cloud APIs, no external subscriptions.
 
 ## Privacy
 
-- All embedding and search runs **locally** via
-  [transformers.js](https://huggingface.co/docs/transformers.js) — your
-  notes never leave your machine.
-- The only network request is a **one-time download** of the embedding
-  model ([nomic-embed-text-v1.5](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5))
-  from Hugging Face on first use.
-- No telemetry, no analytics, no cloud services.
-- The index lives in `.obsidian/plugins/obsidian-brain/` inside your
-  vault; your notes are never modified.
+- All embedding computation, vector search, and reranking run **locally** on your GPU/CPU.
+- The only network access is a **one-time download** of model weights from Hugging Face on first activation (cached locally in your browser/vault cache).
+- Vault notes are never transmitted or modified. The index is stored strictly in `.obsidian/plugins/constellations/`.
+
+## Commands
+
+| Command | Action |
+| :--- | :--- |
+| `Open constellation graph` | Opens the full-screen interactive constellation graph |
+| `Show related notes` | Toggles the related notes companion sidebar |
+| `Reindex notes` | Manually triggers a re-index of new or modified vault notes |
 
 ## Development
 
 ```bash
 npm install
-npm run dev    # watch-mode build
-npm test       # vitest suite for the chunking pipeline
-npm run build  # type-check + production bundle
-npm run lint
+npm test       # run vitest test suite
+npm run dev    # watch-mode incremental build
+npm run build  # type-check and production bundle
+npm run lint   # eslint validation
 ```
 
-To test manually, build and copy `main.js`, `manifest.json`, and
-`styles.css` to `<Vault>/.obsidian/plugins/obsidian-brain/`, then enable
-the plugin in **Settings → Community plugins**. (Use a dedicated
-development vault, not your main one.)
+### Manual Testing in Obsidian
 
-## Credits
+1. Run `npm run build` to generate `main.js`.
+2. Copy `main.js`, `manifest.json`, and `styles.css` to `<Vault>/.obsidian/plugins/constellations/`.
+3. In Obsidian, go to **Settings → Community plugins** and enable **Constellations**.
 
-The markdown chunking pipeline is a TypeScript port of the hand-rolled
-parser in [accio.ai](../accio.ai), verified against the original Python
-outputs in the test suite.
+## Documentation
 
-Based on the
-[Obsidian sample plugin](https://github.com/obsidianmd/obsidian-sample-plugin).
+- [Technical Architecture](docs/architecture.md) — deep dive on the chunking pipeline, index storage, and inference engine.

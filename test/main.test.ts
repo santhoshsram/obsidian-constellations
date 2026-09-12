@@ -69,13 +69,13 @@ describe('ObsidianBrainPlugin', () => {
 		expect(registeredViews[VIEW_TYPE_RELATED]).toBeDefined();
 	});
 
-	it('registers consolidated commands including open-context-graph', async () => {
+	it('registers consolidated commands including open-constellation-graph', async () => {
 		await plugin.onload();
 
 		const commandIds = registeredCommands.map((c) => c.id);
 		expect(commandIds).toContain('reindex-notes');
 		expect(commandIds).toContain('show-related-notes');
-		expect(commandIds).toContain('open-context-graph');
+		expect(commandIds).toContain('open-constellation-graph');
 
 		// Old notice commands should no longer exist
 		expect(commandIds).not.toContain('find-related-notes');
@@ -84,11 +84,11 @@ describe('ObsidianBrainPlugin', () => {
 		expect(commandIds).not.toContain('find-related-notes-mean');
 	});
 
-	it('registers ribbon icon for Open Context Graph', async () => {
+	it('registers ribbon icon for Open Constellation Graph', async () => {
 		await plugin.onload();
 		expect(addRibbonIconSpy).toHaveBeenCalledWith(
 			'brain-circuit',
-			'Open context graph',
+			'Open constellation graph',
 			expect.any(Function),
 		);
 	});

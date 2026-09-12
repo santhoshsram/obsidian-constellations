@@ -350,7 +350,7 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Context graph 1-hop notes')
+			.setName('Constellation graph 1-hop notes')
 			.setDesc('Number of top related notes connected directly to the seed.')
 			.addSlider((slider) =>
 				slider
@@ -364,7 +364,7 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Context graph 2-hop notes')
+			.setName('Constellation graph 2-hop notes')
 			.setDesc('Number of 2-hop related notes expanded per 1-hop note.')
 			.addSlider((slider) =>
 				slider
@@ -378,7 +378,7 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Context graph similarity threshold')
+			.setName('Constellation graph similarity threshold')
 			.setDesc(
 				'Minimum cosine similarity for edges drawn between notes in the graph.',
 			)

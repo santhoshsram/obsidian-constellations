@@ -1,8 +1,8 @@
 /**
- * Internal configuration constants for Obsidian Brain.
+ * Internal configuration constants for Constellations.
  *
  * Tunable knobs kept out of the general user settings UI to keep the interface
- * clean, but easily configurable here or via `<Vault>/.obsidian/plugins/obsidian-brain/data.json`.
+ * clean, but easily configurable here or via `<Vault>/.obsidian/plugins/constellations/data.json`.
  */
 
 export const RETRIEVAL_CONFIG = {

@@ -3,11 +3,11 @@ import { pluginName, setPluginName } from '../src/plugin-name';
 
 describe('plugin-name', () => {
 	beforeEach(() => {
-		setPluginName('Obsidian Brain');
+		setPluginName('Constellations');
 	});
 
 	it('returns default fallback name when unchanged', () => {
-		expect(pluginName()).toBe('Obsidian Brain');
+		expect(pluginName()).toBe('Constellations');
 	});
 
 	it('allows updating the plugin name via setPluginName', () => {
