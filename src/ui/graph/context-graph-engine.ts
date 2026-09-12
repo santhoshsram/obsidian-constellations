@@ -23,6 +23,7 @@ export interface ContextGraphEngineOptions {
 	onNodeClick?: (node: GraphNode) => void;
 	onNodeDoubleClick?: (node: GraphNode) => void;
 	onNodeHover?: (node: GraphNode | null) => void;
+	enableTooltip?: boolean;
 }
 
 function getEndpointId(endpoint: string | GraphNode): string {
@@ -87,7 +88,7 @@ export class ContextGraphEngine {
 		this.linkForce = forceLink<GraphNode, GraphEdge>(this.edges).id((d) => d.id);
 		this.radialForce = forceRadial<GraphNode>(
 			(d: GraphNode) => {
-				if (d.isSeed) return 0;
+				if (d.isSeed || d.hop > 1) return 0;
 				let score = d.similarity ?? 0.6;
 				if (score > 1.0) score = 1 / (1 + Math.exp(-score));
 				const norm = Math.max(0, Math.min(1, (score - 0.4) / 0.55));
@@ -118,24 +119,54 @@ export class ContextGraphEngine {
 	}
 
 	private updateForces(scale: number): void {
-		this.linkForce.distance((edge) => {
-			let score = edge.similarity ?? 0.6;
-			if (score > 1.0) score = 1 / (1 + Math.exp(-score));
-			const normScore = Math.max(0, Math.min(1, (score - 0.4) / 0.55));
+		this.linkForce
+			.distance((edge) => {
+				let score = edge.similarity ?? 0.6;
+				if (score > 1.0) score = 1 / (1 + Math.exp(-score));
+				const normScore = Math.max(0, Math.min(1, (score - 0.4) / 0.55));
 
-			const minLinkDist = 80 * scale;
-			const maxLinkDist = 240 * scale;
-			return minLinkDist + (1 - normScore) * (maxLinkDist - minLinkDist);
-		});
+				if (edge.kind === 'peer') {
+					// Peer 1-hop cross-edges: wider cluster spacing (smooth counterweight against crowding)
+					const minPeerDist = 140 * scale;
+					const maxPeerDist = 260 * scale;
+					return minPeerDist + (1 - normScore) * (maxPeerDist - minPeerDist);
+				}
+
+				if (edge.isSecondary || edge.kind === 'satellite') {
+					// Secondary satellite orbit distance (outside parent label zone)
+					const minSecDist = 42 * scale;
+					const maxSecDist = 78 * scale;
+					return minSecDist + (1 - normScore) * (maxSecDist - minSecDist);
+				}
+
+				// Primary seed links: distance strictly corresponds to score
+				const minLinkDist = 80 * scale;
+				const maxLinkDist = 240 * scale;
+				return minLinkDist + (1 - normScore) * (maxLinkDist - minLinkDist);
+			})
+			.strength((edge) => {
+				if (edge.kind === 'peer') {
+					// Whisper-soft spring tension so similar 1-hops gently drift together without bunching up
+					return 0.05;
+				}
+				if (edge.isSecondary || edge.kind === 'satellite') {
+					return 0.8;
+				}
+				return 1.0;
+			});
 
 		this.simulation.force(
 			'charge',
-			forceManyBody<GraphNode>().strength((d) => (d.isSeed ? -350 * scale : -140 * scale)),
+			forceManyBody<GraphNode>().strength((d) => {
+				if (d.isSeed) return -350 * scale;
+				if (d.hop > 1) return -70 * scale; // Tiered 2-hop counterweight (nearly 3x stronger than before)
+				return -220 * scale;
+			}),
 		);
 
 		this.radialForce
 			.radius((d: GraphNode) => {
-				if (d.isSeed) return 0;
+				if (d.isSeed || d.hop > 1) return 0;
 				let score = d.similarity ?? 0.6;
 				if (score > 1.0) score = 1 / (1 + Math.exp(-score));
 				const norm = Math.max(0, Math.min(1, (score - 0.4) / 0.55));
@@ -143,12 +174,74 @@ export class ContextGraphEngine {
 				const maxRadial = 250 * scale;
 				return minRadial + (1 - norm) * (maxRadial - minRadial);
 			})
-			.strength((d: GraphNode) => (d.isSeed ? 1.0 : 0.75));
+			.strength((d: GraphNode) => {
+				if (d.isSeed) return 1.0;
+				if (d.hop > 1) return 0;
+				return 0.95;
+			});
 
 		this.simulation.force(
 			'collide',
-			forceCollide<GraphNode>((d) => (d.radius ?? 8) + 24 * scale).iterations(3),
+			forceCollide<GraphNode>((d) => (d.radius ?? (d.hop > 1 ? 4.5 : 8)) + (d.hop > 1 ? 12 : 48) * scale).iterations(4),
 		);
+
+		this.simulation.force(
+			'angular',
+			this.createAngularForce(scale),
+		);
+	}
+
+	private createAngularForce(scale: number) {
+		return (alpha: number) => {
+			const seed = this.nodes.find((n) => n.isSeed);
+			const cx = seed?.x ?? this.centerForce.x?.() ?? 400;
+			const cy = seed?.y ?? this.centerForce.y?.() ?? 300;
+			const h1Nodes = this.nodes.filter(
+				(n) => n.hop === 1 && n.x !== undefined && n.y !== undefined,
+			);
+			if (h1Nodes.length < 2) return;
+
+			// Compute polar angle for each hop-1 node relative to seed
+			const nodeAngles = h1Nodes.map((n) => ({
+				node: n,
+				angle: Math.atan2((n.y ?? 0) - cy, (n.x ?? 0) - cx),
+			}));
+
+			// Sort by angle around the circle [-PI, PI]
+			nodeAngles.sort((a, b) => a.angle - b.angle);
+
+			// Minimum angular clearance between any two adjacent 1-hop spokes (~22 degrees = 0.38 rad)
+			const minSeparation = Math.min(
+				(2 * Math.PI) / (h1Nodes.length + 1),
+				0.38,
+			);
+
+			const count = nodeAngles.length;
+			for (let i = 0; i < count; i++) {
+				const current = nodeAngles[i]!;
+				const next = nodeAngles[(i + 1) % count]!;
+
+				let diff = next.angle - current.angle;
+				if (diff < 0) diff += 2 * Math.PI;
+
+				if (diff < minSeparation) {
+					const overlap = minSeparation - Math.max(1e-4, diff);
+					const forceMag = overlap * 80 * alpha * scale;
+
+					// Push current counterclockwise (decreasing angle in screen coords)
+					const curSin = Math.sin(current.angle);
+					const curCos = Math.cos(current.angle);
+					current.node.vx = (current.node.vx ?? 0) + curSin * forceMag;
+					current.node.vy = (current.node.vy ?? 0) - curCos * forceMag;
+
+					// Push next clockwise (increasing angle in screen coords)
+					const nextSin = Math.sin(next.angle);
+					const nextCos = Math.cos(next.angle);
+					next.node.vx = (next.node.vx ?? 0) - nextSin * forceMag;
+					next.node.vy = (next.node.vy ?? 0) + nextCos * forceMag;
+				}
+			}
+		};
 	}
 
 	getNodes(): GraphNode[] {
@@ -274,32 +367,116 @@ export class ContextGraphEngine {
 		}
 
 		const hop1Nodes = data.nodes.filter((n) => n.hop === 1);
+		// Order hop-1 nodes so that mutually similar / peer-connected nodes occupy adjacent angular slots
+		// This prevents peer springs from pulling across the center or crisscrossing spokes!
+		const orderedH1: GraphNode[] = [];
+		if (hop1Nodes.length > 0) {
+			const remaining = new Set(hop1Nodes);
+			let current = hop1Nodes[0]!;
+			orderedH1.push(current);
+			remaining.delete(current);
+
+			while (remaining.size > 0) {
+				// Find best neighbor in remaining connected by peer edge or highest similarity
+				let bestNext: GraphNode | null = null;
+				let bestSim = -1;
+
+				for (const edge of data.edges) {
+					if (edge.kind === 'peer') {
+						const sId = getEndpointId(edge.source);
+						const tId = getEndpointId(edge.target);
+						if (sId === current.id) {
+							const cand = [...remaining].find((n) => n.id === tId);
+							if (cand && (edge.similarity ?? 0) > bestSim) {
+								bestSim = edge.similarity ?? 0;
+								bestNext = cand;
+							}
+						} else if (tId === current.id) {
+							const cand = [...remaining].find((n) => n.id === sId);
+							if (cand && (edge.similarity ?? 0) > bestSim) {
+								bestSim = edge.similarity ?? 0;
+								bestNext = cand;
+							}
+						}
+					}
+				}
+
+				if (!bestNext) {
+					// Fallback to first remaining
+					bestNext = remaining.values().next().value!;
+				}
+
+				orderedH1.push(bestNext);
+				remaining.delete(bestNext);
+				current = bestNext;
+			}
+		}
+
 		const h1Angles = new Map<string, number>();
-		const h1Count = Math.max(1, hop1Nodes.length);
-		hop1Nodes.forEach((h1, i) => {
+		const h1Count = Math.max(1, orderedH1.length);
+		orderedH1.forEach((h1, i) => {
 			const angle = (i / h1Count) * Math.PI * 2 - Math.PI / 2;
 			h1Angles.set(h1.id, angle);
 		});
 
+		const nodePosMap = new Map<string, { x: number; y: number; angle: number }>();
+
+		// 1. Seed position
+		const seedNode = data.nodes.find((n) => n.isSeed);
+		if (seedNode) {
+			const existing = existingPositions.get(seedNode.id);
+			if (!isNewSeed && existing && existing.x !== undefined && existing.y !== undefined) {
+				nodePosMap.set(seedNode.id, { x: existing.x, y: existing.y, angle: 0 });
+			} else {
+				nodePosMap.set(seedNode.id, { x: cx, y: cy, angle: 0 });
+			}
+		}
+
+		// 2. Hop-1 positions
+		orderedH1.forEach((h1) => {
+			const existing = existingPositions.get(h1.id);
+			if (!isNewSeed && existing && existing.x !== undefined && existing.y !== undefined) {
+				const angle = Math.atan2(existing.y - cy, existing.x - cx);
+				nodePosMap.set(h1.id, { x: existing.x, y: existing.y, angle });
+				return;
+			}
+			let score = h1.similarity ?? 0.6;
+			if (score > 1.0) score = 1 / (1 + Math.exp(-score));
+			const norm = Math.max(0, Math.min(1, (score - 0.4) / 0.55));
+
+			const angle = h1Angles.get(h1.id) ?? 0;
+			const minRadial = 90 * scale;
+			const maxRadial = 250 * scale;
+			const r = minRadial + (1 - norm) * (maxRadial - minRadial);
+			nodePosMap.set(h1.id, {
+				x: cx + Math.cos(angle) * r,
+				y: cy + Math.sin(angle) * r,
+				angle,
+			});
+		});
+
+		// 3. Group hop-2 nodes by parent
+		const satellitesByParent = new Map<string, GraphNode[]>();
+		data.nodes.forEach((n) => {
+			if (n.hop > 1 && n.parentId) {
+				const list = satellitesByParent.get(n.parentId) ?? [];
+				list.push(n);
+				satellitesByParent.set(n.parentId, list);
+			}
+		});
+
+		// 4. Map all nodes to simulation format
 		this.nodes = data.nodes.map((n) => {
 			const existing = existingPositions.get(n.id);
 
 			if (n.isSeed) {
-				if (!isNewSeed && existing && existing.x !== undefined && existing.y !== undefined) {
-					return {
-						...n,
-						x: existing.x,
-						y: existing.y,
-						fx: existing.x,
-						fy: existing.y,
-					};
-				}
+				const pos = nodePosMap.get(n.id) ?? { x: cx, y: cy };
 				return {
 					...n,
-					x: cx,
-					y: cy,
-					fx: cx,
-					fy: cy,
+					x: pos.x,
+					y: pos.y,
+					fx: pos.x,
+					fy: pos.y,
 				};
 			}
 
@@ -313,18 +490,36 @@ export class ContextGraphEngine {
 				};
 			}
 
-			let score = n.similarity ?? 0.6;
-			if (score > 1.0) score = 1 / (1 + Math.exp(-score));
-			const norm = Math.max(0, Math.min(1, (score - 0.4) / 0.55));
+			if (n.hop === 1) {
+				const pos = nodePosMap.get(n.id) ?? { x: cx, y: cy };
+				return {
+					...n,
+					x: pos.x,
+					y: pos.y,
+				};
+			}
 
-			const angle = h1Angles.get(n.id) ?? 0;
-			const minRadial = 90 * scale;
-			const maxRadial = 250 * scale;
-			const r = minRadial + (1 - norm) * (maxRadial - minRadial);
+			// Hop > 1 (satellites)
+			if (n.parentId && nodePosMap.has(n.parentId)) {
+				const parentPos = nodePosMap.get(n.parentId)!;
+				const siblings = satellitesByParent.get(n.parentId) ?? [n];
+				const sibIndex = siblings.findIndex((s) => s.id === n.id);
+				const totalSibs = Math.max(1, siblings.length);
+				const spread = 0.35; // radians spread between satellites
+				const satAngleOffset = (sibIndex - (totalSibs - 1) / 2) * spread;
+				const satAngle = parentPos.angle + satAngleOffset;
+				const satDist = 58 * scale;
+				return {
+					...n,
+					x: parentPos.x + Math.cos(satAngle) * satDist,
+					y: parentPos.y + Math.sin(satAngle) * satDist,
+				};
+			}
+
 			return {
 				...n,
-				x: cx + Math.cos(angle) * r,
-				y: cy + Math.sin(angle) * r,
+				x: cx + (Math.random() - 0.5) * 100 * scale,
+				y: cy + (Math.random() - 0.5) * 100 * scale,
 			};
 		});
 
@@ -470,7 +665,7 @@ export class ContextGraphEngine {
 
 	private updateTooltip(node: GraphNode | null, clientX: number, clientY: number): void {
 		if (!this.tooltipEl) return;
-		if (!node || node.isSeed || !node.sneakPeek || node.sneakPeek.length === 0) {
+		if (!this.options.enableTooltip || !node || node.isSeed || !node.sneakPeek || node.sneakPeek.length === 0) {
 			this.tooltipEl.addClass('is-hidden');
 			return;
 		}
@@ -637,6 +832,8 @@ export class ContextGraphEngine {
 
 		if (hovered) {
 			connectedNodeIds.add(hovered.id);
+
+			// Direct edges and immediate neighbors
 			for (const edge of this.edges) {
 				const sId = getEndpointId(edge.source);
 				const tId = getEndpointId(edge.target);
@@ -644,6 +841,23 @@ export class ContextGraphEngine {
 					connectedEdgeIds.add(edge.id);
 					connectedNodeIds.add(sId);
 					connectedNodeIds.add(tId);
+				}
+			}
+
+			// Ancestry path: If hovered is a 2-hop satellite, also highlight its 1-hop parent's primary spoke to seed
+			if (hovered.hop === 2 && hovered.parentId) {
+				connectedNodeIds.add(hovered.parentId);
+				for (const edge of this.edges) {
+					const sId = getEndpointId(edge.source);
+					const tId = getEndpointId(edge.target);
+					const sourceNode = getEndpointNode(edge.source);
+					const targetNode = getEndpointNode(edge.target);
+					const isPrimarySpoke =
+						(sourceNode?.isSeed && tId === hovered.parentId) ||
+						(targetNode?.isSeed && sId === hovered.parentId);
+					if (isPrimarySpoke) {
+						connectedEdgeIds.add(edge.id);
+					}
 				}
 			}
 		}
@@ -654,9 +868,9 @@ export class ContextGraphEngine {
 			const target = getEndpointNode(edge.target);
 			if (!source || !target || source.x === undefined || target.x === undefined) continue;
 
-			const isHoveredEdge = hovered && connectedEdgeIds.has(edge.id);
-			const isDimmed = hovered && !isHoveredEdge;
+			const isHoveredEdge = Boolean(hovered && connectedEdgeIds.has(edge.id));
 			const isSeedEdge = source.isSeed || target.isSeed;
+			const isSecondary = Boolean(edge.isSecondary || !isSeedEdge);
 
 			// Normalize similarity/rerank score to 0..1 range
 			let score = edge.similarity ?? 0.6;
@@ -665,44 +879,67 @@ export class ContextGraphEngine {
 			}
 			const normScore = Math.max(0, Math.min(1, (score - 0.4) / 0.55));
 
-			// Edge thickness corresponds directly to final score:
-			// Weak match: ~1.2px, strong match: ~4.2px
-			const baseWidth = 1.0 + normScore * 3.2;
-			const isHighlighted = isHoveredEdge || (!hovered && isSeedEdge);
-			const lineWidth = isHighlighted ? baseWidth * 1.35 : baseWidth;
-
-			// Edge opacity:
-			// When a node is hovered, non-connected edges dim to 0.05.
-			// When no node is hovered, seed edges are vibrant in accent color, while outer edges remain subtly visible.
+			let lineWidth: number;
+			let strokeStyle: string;
 			let alpha: number;
-			if (isHoveredEdge) {
-				alpha = 0.95;
-			} else if (isDimmed) {
-				alpha = 0.05;
-			} else if (isSeedEdge) {
-				alpha = 0.55 + normScore * 0.4;
+
+			if (isSecondary) {
+				// Secondary satellite or peer links: uniform fixed hairline
+				lineWidth = 1.0;
+				if (isHoveredEdge) {
+					// Soft translucent accent when active cluster is hovered
+					strokeStyle = accentColor;
+					alpha = 0.55;
+				} else if (hovered) {
+					// Other secondary links slightly recede
+					strokeStyle = borderColor;
+					alpha = 0.12;
+				} else {
+					// Elevated ambient wallpaper at rest (distinctly visible)
+					strokeStyle = borderColor;
+					alpha = 0.38;
+				}
 			} else {
-				alpha = 0.2 + normScore * 0.35;
+				// Primary seed links: dynamic thickness strictly based on score
+				const baseWidth = 1.0 + normScore * 3.2;
+				lineWidth = isHoveredEdge ? baseWidth * 1.35 : baseWidth;
+				strokeStyle = (isHoveredEdge || !hovered) ? accentColor : borderColor;
+
+				if (isHoveredEdge) {
+					alpha = 1.0;
+				} else if (hovered) {
+					// Other primary spokes fade just a wee bit (~0.90) for subtle contrast
+					alpha = 0.90;
+				} else {
+					// Solid at rest, never faded based on score
+					alpha = 1.0;
+				}
 			}
 
 			ctx.beginPath?.();
 			ctx.moveTo?.(source.x, source.y ?? 0);
 			ctx.lineTo?.(target.x, target.y ?? 0);
-			ctx.strokeStyle = isHighlighted ? accentColor : borderColor;
+			ctx.strokeStyle = strokeStyle;
 			ctx.lineWidth = lineWidth;
 			ctx.globalAlpha = alpha;
 			ctx.stroke?.();
 		}
 
-		// 2. Draw Nodes
-		for (const node of this.nodes) {
-			if (node.x === undefined || node.y === undefined) continue;
+		// 2. Draw Nodes in stratified visual layers (Z-Index):
+		// Layer A: 2-Hop background satellites
+		// Layer B: 1-Hop constellation stars (non-hovered)
+		// Layer C: Hovered star & Central Protagonist (topmost)
+		const hop2Nodes = this.nodes.filter((n) => n.hop === 2 && hovered?.id !== n.id);
+		const hop1Nodes = this.nodes.filter((n) => n.hop === 1 && hovered?.id !== n.id);
+		const topNodes = this.nodes.filter((n) => n.isSeed || hovered?.id === n.id);
 
-			const isHovered = hovered && hovered.id === node.id;
-			const isConnected = hovered && connectedNodeIds.has(node.id);
-			const isDimmed = hovered && !isConnected;
+		const renderNode = (node: GraphNode): void => {
+			if (node.x === undefined || node.y === undefined) return;
 
-			const radius = (node.radius ?? 8) * (isHovered ? 1.3 : 1);
+			const isHovered = Boolean(hovered && hovered.id === node.id);
+			const isConnected = Boolean(hovered && connectedNodeIds.has(node.id));
+			const isHop2 = node.hop === 2;
+			const radius = (node.radius ?? (isHop2 ? 4.5 : 8)) * (isHovered ? 1.3 : 1);
 
 			// Radiating ripple rings when in optimistic loading state
 			if (node.isSeed && this.optimisticLoading) {
@@ -729,30 +966,126 @@ export class ContextGraphEngine {
 				ctx.restore?.();
 			}
 
+			// Node Opacity & Fill/Stroke styling
+			let nodeAlpha = 1.0;
+			let fillStyle = bgSecondary;
+			let strokeStyle = borderColor;
+			let strokeWidth = 1.5;
+
+			if (node.isSeed) {
+				// Protagonist
+				nodeAlpha = 1.0;
+				fillStyle = accentColor;
+				strokeStyle = accentColor;
+				strokeWidth = 2.0;
+			} else if (isHop2) {
+				// 2-Hop Ambient Satellites
+				if (isHovered || isConnected) {
+					nodeAlpha = 0.90;
+					fillStyle = isHovered ? accentColor : bgSecondary;
+					strokeStyle = accentColor;
+					strokeWidth = isHovered ? 2.0 : 1.4;
+				} else if (hovered) {
+					nodeAlpha = 0.22;
+					fillStyle = bgSecondary;
+					strokeStyle = borderColor;
+					strokeWidth = 1.0;
+				} else {
+					nodeAlpha = 0.55;
+					fillStyle = bgSecondary;
+					strokeStyle = borderColor;
+					strokeWidth = 1.2;
+				}
+			} else {
+				// 1-Hop Major Constellation Stars
+				if (isHovered || isConnected) {
+					nodeAlpha = 1.0;
+					fillStyle = isHovered ? accentColor : bgSecondary;
+					strokeStyle = accentColor;
+					strokeWidth = isHovered ? 2.5 : 2.0;
+				} else if (hovered) {
+					nodeAlpha = 0.90;
+					fillStyle = bgSecondary;
+					strokeStyle = borderColor;
+					strokeWidth = 1.5;
+				} else {
+					nodeAlpha = 1.0;
+					fillStyle = bgSecondary;
+					strokeStyle = accentColor;
+					strokeWidth = 1.8;
+				}
+			}
+
 			// Circle fill
 			ctx.beginPath?.();
 			ctx.arc?.(node.x, node.y, radius, 0, Math.PI * 2);
-			ctx.fillStyle = node.isSeed ? accentColor : isHovered ? accentColor : bgSecondary;
-			ctx.globalAlpha = isDimmed ? 0.25 : 1.0;
+			ctx.fillStyle = fillStyle;
+			ctx.globalAlpha = nodeAlpha;
 			ctx.fill?.();
 
-			// Circle stroke: Seed and Hop 1 nodes show accentColor stroke in default resting state
-			const isAccentStroke = node.isSeed || isHovered || isConnected || (!hovered && node.hop === 1);
-			ctx.strokeStyle = isAccentStroke ? accentColor : borderColor;
-			ctx.lineWidth = isHovered ? 2.5 : node.isSeed ? 2 : 1.5;
+			// Circle stroke
+			ctx.strokeStyle = strokeStyle;
+			ctx.lineWidth = strokeWidth;
 			ctx.stroke?.();
 
 			// Label
-			const showLabel = node.isSeed || node.hop <= 1 || isHovered || this.zoom > 1.2;
+			let showLabel = false;
+			if (node.isSeed) {
+				showLabel = true;
+			} else if (node.hop === 1) {
+				showLabel = true;
+			} else if (isHop2) {
+				showLabel = Boolean(isHovered || isConnected);
+			}
+
 			if (showLabel) {
-				ctx.font = `${node.isSeed ? 'bold ' : ''}${Math.round(11 / Math.sqrt(this.zoom))}px sans-serif`;
+				const fontSize = isHop2 ? 9 : 11;
+				ctx.font = `${node.isSeed ? 'bold ' : ''}${Math.round(fontSize / Math.sqrt(this.zoom))}px sans-serif`;
 				ctx.textAlign = 'center';
 				ctx.textBaseline = 'top';
-				ctx.fillStyle = node.isSeed ? accentColor : node.hop <= 1 ? textNormal : textMuted;
-				ctx.globalAlpha = isDimmed ? 0.2 : 0.95;
-				ctx.fillText?.(node.label, node.x, node.y + radius + 4);
+
+				// Determine label position: offset satellites outward from parent
+				let lx = node.x;
+				let ly = node.y + radius + 4;
+				if (isHop2 && node.parentId) {
+					const parent = this.nodes.find((n) => n.id === node.parentId);
+					if (parent && parent.x !== undefined && parent.y !== undefined) {
+						const dx = node.x - parent.x;
+						const dy = node.y - parent.y;
+						const len = Math.hypot(dx, dy) || 1;
+						lx = node.x + (dx / len) * (radius + 6);
+						ly = node.y + (dy / len) * (radius + 6);
+						if (dy < -5) {
+							ctx.textBaseline = 'bottom';
+						} else if (Math.abs(dy) <= 5) {
+							ctx.textBaseline = 'middle';
+							ctx.textAlign = dx > 0 ? 'left' : 'right';
+						}
+					}
+				}
+
+				const textFill = node.isSeed ? accentColor : isHop2 ? textMuted : (isHovered ? accentColor : textNormal);
+				const textAlpha = isHop2 ? 0.85 : (!hovered || isHovered ? 0.95 : 0.90);
+
+				// Dark text halo behind every label to prevent letters being sliced by lines/dots
+				ctx.save?.();
+				ctx.strokeStyle = bgSecondary;
+				ctx.lineWidth = 3.5 / Math.sqrt(this.zoom);
+				ctx.lineJoin = 'round';
+				ctx.globalAlpha = textAlpha * 0.9;
+				ctx.strokeText?.(node.label, lx, ly);
+				ctx.restore?.();
+
+				ctx.fillStyle = textFill;
+				ctx.globalAlpha = textAlpha;
+				ctx.fillText?.(node.label, lx, ly);
 			}
-		}
+		};
+
+		// Draw passes from lowest layer to topmost layer
+		for (const n of hop2Nodes) renderNode(n);
+		for (const n of hop1Nodes) renderNode(n);
+		for (const n of topNodes) renderNode(n);
 
 		ctx.restore?.();
 	}

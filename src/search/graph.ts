@@ -21,6 +21,7 @@ export interface GraphNode {
 	hop: number;
 	similarity?: number;
 	radius?: number;
+	parentId?: string;
 	sneakPeek?: string[];
 	x?: number;
 	y?: number;
@@ -35,6 +36,8 @@ export interface GraphEdge {
 	source: string | GraphNode;
 	target: string | GraphNode;
 	similarity: number;
+	isSecondary?: boolean;
+	kind?: 'primary' | 'peer' | 'satellite';
 }
 
 export interface GraphData {
@@ -44,9 +47,11 @@ export interface GraphData {
 }
 
 export interface GraphBuildOptions {
-	graphHop1Count: number;
-	graphHop2Count: number;
-	graphSimilarityThreshold: number;
+	graphHop1Count?: number;
+	graphHop2Count?: number;
+	graphSimilarityThreshold?: number;
+	maxRelatedNotes?: number;
+	minSimilarity?: number;
 }
 
 /**
@@ -90,8 +95,12 @@ export async function buildContextGraph(
 	embedder?: Embedder,
 	initialHop1?: Array<{ filePath: string; score: number }>,
 ): Promise<GraphData> {
-	const hop1Count = Math.max(1, options.graphHop1Count);
-	const threshold = options.graphSimilarityThreshold;
+	const hop1Count = Math.max(
+		1,
+		options.maxRelatedNotes ?? options.graphHop1Count ?? 10,
+	);
+	const threshold =
+		options.minSimilarity ?? options.graphSimilarityThreshold ?? 0.45;
 
 	const nodes: GraphNode[] = [];
 	const visitedFiles = new Set<string>();
@@ -239,12 +248,19 @@ export async function buildContextGraph(
 		}
 	}
 
-	// Build edges with strict Hub-and-Spoke (star) topology:
-	// Seed connects ONLY to Hop 1 nodes. No Hop 2 nodes, and no peer cross-edges.
+	// Build edges:
+	// - Primary edges (Seed -> Hop 1): Solid, vibrant
+	// - Secondary edges (Hop 1 -> Hop 2 or Hop 1 -> Hop 1): Faint hairline ambient satellites
 	const edges: GraphEdge[] = [];
 	const seenPairs = new Set<string>();
 
-	const addEdge = (sourceId: string, targetId: string, similarity: number): boolean => {
+	const addEdge = (
+		sourceId: string,
+		targetId: string,
+		similarity: number,
+		isSecondary = false,
+		kind: 'primary' | 'peer' | 'satellite' = 'primary',
+	): boolean => {
 		const pairKey = [sourceId, targetId].sort().join('---');
 		if (seenPairs.has(pairKey)) return false;
 		seenPairs.add(pairKey);
@@ -253,14 +269,17 @@ export async function buildContextGraph(
 			source: sourceId,
 			target: targetId,
 			similarity,
+			isSecondary,
+			kind,
 		});
 		return true;
 	};
 
 	const seedNode = nodes.find((n) => n.isSeed);
 	const hop1Nodes = nodes.filter((n) => n.hop === 1);
+	const hop1NodeIds = new Set(hop1Nodes.map((n) => n.id));
 
-	// Seed -> Hop 1 edges
+	// 1. Seed -> Hop 1 edges (Primary spokes)
 	if (seedNode) {
 		for (const h1 of hop1Nodes) {
 			let sim = 0;
@@ -280,7 +299,68 @@ export async function buildContextGraph(
 					if (dot > sim) sim = dot;
 				}
 			}
-			addEdge(seedNode.id, h1.id, Math.max(0.4, sim));
+			addEdge(seedNode.id, h1.id, Math.max(0.4, sim), false, 'primary');
+		}
+	}
+
+	// 2. Secondary 2-hop satellites & peer cross-connections
+	const hop2PerNode = Math.min(
+		6,
+		Math.max(0, options.graphHop2Count !== undefined ? options.graphHop2Count : 4),
+	);
+	const h1CrossCounts = new Map<string, number>();
+
+	for (const h1 of hop1Nodes) {
+		if (!h1.filePath) continue;
+		const h1Vecs = getVectors(h1.filePath);
+		const candidates: Array<{ file: string; score: number }> = [];
+
+		for (const other of index.indexedFiles()) {
+			if (other === h1.filePath) continue;
+			if (seed.type === 'note' && other === seed.path) continue;
+			const otherVecs = getVectors(other);
+			const sim = maxNoteSimilarity(h1Vecs, otherVecs);
+			if (sim >= threshold) {
+				candidates.push({ file: other, score: sim });
+			}
+		}
+		candidates.sort((a, b) => b.score - a.score);
+
+		let addedForH1 = 0;
+		for (const cand of candidates) {
+			if (addedForH1 >= hop2PerNode) break;
+
+			// Case A: Candidate is another 1-hop foreground star (peer cross-connection)
+			if (hop1NodeIds.has(cand.file)) {
+				const countA = h1CrossCounts.get(h1.id) ?? 0;
+				const countB = h1CrossCounts.get(cand.file) ?? 0;
+				if (countA < 1 && countB < 1) {
+					if (addEdge(h1.id, cand.file, cand.score, true, 'peer')) {
+						h1CrossCounts.set(h1.id, countA + 1);
+						h1CrossCounts.set(cand.file, countB + 1);
+					}
+				}
+				continue;
+			}
+
+			// Case B: Candidate is a true 2-hop background star (satellite)
+			if (!visitedFiles.has(cand.file)) {
+				visitedFiles.add(cand.file);
+				nodes.push({
+					id: cand.file,
+					label: noteLabel(cand.file),
+					filePath: cand.file,
+					isSeed: false,
+					hop: 2,
+					similarity: cand.score,
+					radius: 4.5,
+					parentId: h1.id,
+				});
+			}
+
+			if (addEdge(h1.id, cand.file, cand.score, true, 'satellite')) {
+				addedForH1++;
+			}
 		}
 	}
 

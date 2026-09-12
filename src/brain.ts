@@ -555,12 +555,14 @@ export class Brain {
 		}
 		const buildOptions: GraphBuildOptions = {
 			graphHop1Count:
-				options?.graphHop1Count ?? this.plugin.settings.graphHop1Count,
-			graphHop2Count:
-				options?.graphHop2Count ?? this.plugin.settings.graphHop2Count,
+				options?.graphHop1Count ??
+				options?.maxRelatedNotes ??
+				this.plugin.settings.maxRelatedNotes,
+			graphHop2Count: options?.graphHop2Count ?? 4,
 			graphSimilarityThreshold:
 				options?.graphSimilarityThreshold ??
-				this.plugin.settings.graphSimilarityThreshold,
+				options?.minSimilarity ??
+				this.plugin.settings.minScore,
 		};
 
 		let initialHop1: Array<{ filePath: string; score: number }> | undefined;

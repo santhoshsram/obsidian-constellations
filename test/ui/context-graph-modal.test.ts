@@ -51,9 +51,8 @@ describe('ContextGraphModal', () => {
 			app: mockApp,
 			settings: {
 				openInNewTab: true,
-				graphHop1Count: 10,
-				graphHop2Count: 5,
-				graphSimilarityThreshold: 0.75,
+				maxRelatedNotes: 10,
+				minScore: 0.45,
 			},
 			brain: {
 				isReady: true,

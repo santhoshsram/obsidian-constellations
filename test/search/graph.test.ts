@@ -120,10 +120,7 @@ describe('graph data layer', () => {
 
 			expect(graph.seed).toEqual(seed);
 
-			// Nodes should contain only Alpha (hop 0) and Beta (hop 1).
-			const nodeIds = graph.nodes.map((n) => n.id);
-			expect(nodeIds).toEqual(['Alpha.md', 'Beta.md']);
-
+			// Nodes should contain Alpha (hop 0), Beta (hop 1), and 2-hop satellites
 			const alphaNode = graph.nodes.find((n) => n.id === 'Alpha.md');
 			expect(alphaNode?.isSeed).toBe(true);
 			expect(alphaNode?.hop).toBe(0);
@@ -131,6 +128,14 @@ describe('graph data layer', () => {
 			const betaNode = graph.nodes.find((n) => n.id === 'Beta.md');
 			expect(betaNode?.isSeed).toBe(false);
 			expect(betaNode?.hop).toBe(1);
+
+			// 2-hop satellites tethered to Beta
+			const hop2Nodes = graph.nodes.filter((n) => n.hop === 2);
+			expect(hop2Nodes.length).toBeGreaterThanOrEqual(1);
+			for (const h2 of hop2Nodes) {
+				expect(h2.parentId).toBe('Beta.md');
+				expect(h2.radius).toBe(4.5);
+			}
 
 			// Sneak peek data: Beta contains top related note titles up to 5
 			expect(betaNode?.sneakPeek).toBeDefined();
@@ -140,12 +145,17 @@ describe('graph data layer', () => {
 			expect(betaNode?.sneakPeek).not.toContain('Alpha');
 			expect(betaNode?.sneakPeek).not.toContain('Beta');
 
-			// Check edges: Only strictly seed -> hop 1 edges (Alpha <-> Beta)
-			expect(graph.edges.length).toBe(1);
-			const edge = graph.edges[0];
-			expect(edge?.similarity).toBeGreaterThanOrEqual(0.8);
-			const endpoints = [edge?.source, edge?.target].sort();
-			expect(endpoints).toEqual(['Alpha.md', 'Beta.md']);
+			// Check edges: primary seed edge (Alpha <-> Beta) and secondary edges
+			const seedEdge = graph.edges.find(
+				(e) =>
+					(e.source === 'Alpha.md' && e.target === 'Beta.md') ||
+					(e.source === 'Beta.md' && e.target === 'Alpha.md'),
+			);
+			expect(seedEdge).toBeDefined();
+			expect(seedEdge?.isSecondary).toBe(false);
+
+			const secondaryEdges = graph.edges.filter((e) => e.isSecondary);
+			expect(secondaryEdges.length).toBe(hop2Nodes.length);
 		});
 
 		it('removes all peer cross-edges between hop 1 nodes to maintain strict star topology', async () => {
@@ -225,7 +235,7 @@ describe('graph data layer', () => {
 				seed,
 				{
 					graphHop1Count: 2,
-					graphHop2Count: 1,
+					graphHop2Count: 0,
 					graphSimilarityThreshold: 0.75,
 				},
 				mockEmbedder,

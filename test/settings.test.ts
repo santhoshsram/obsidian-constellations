@@ -23,10 +23,7 @@ describe('settings', () => {
 		expect(DEFAULT_SETTINGS.openInNewTab).toBe(true);
 	});
 
-	it('defaults graph settings correctly', () => {
-		expect(DEFAULT_SETTINGS.graphHop1Count).toBe(10);
-		expect(DEFAULT_SETTINGS.graphHop2Count).toBe(5);
-		expect(DEFAULT_SETTINGS.graphSimilarityThreshold).toBe(0.75);
+	it('defaults sidebarViewMode to list', () => {
 		expect(DEFAULT_SETTINGS.sidebarViewMode).toBe('list');
 	});
 

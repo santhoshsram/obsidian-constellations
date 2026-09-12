@@ -203,7 +203,49 @@ describe('ContextGraphEngine', () => {
 			expect(tooltip?.className).toContain('is-hidden');
 		});
 
-		it('shows tooltip with connection titles when hovering over peripheral node with sneakPeek', () => {
+		it('keeps tooltip hidden by default when hovering over node', () => {
+			const data: GraphData = {
+				seed: { type: 'note', path: 'Seed.md' },
+				nodes: [
+					{ id: 'Seed.md', label: 'Seed', isSeed: true, hop: 0, radius: 10 },
+					{
+						id: 'NodeB.md',
+						label: 'Node B',
+						isSeed: false,
+						hop: 1,
+						similarity: 0.85,
+						radius: 7,
+						sneakPeek: ['Related 1', 'Related 2'],
+					},
+				],
+				edges: [{ id: 'Seed---NodeB', source: 'Seed.md', target: 'NodeB.md', similarity: 0.85 }],
+			};
+			engine.setData(data);
+
+			const nodeB = engine.getNodes().find((n) => n.id === 'NodeB.md');
+			if (nodeB) {
+				nodeB.x = 250;
+				nodeB.y = 250;
+			}
+
+			// Simulate hovering over Node B
+			const canvas = container.children.find((c) => c.tagName.toLowerCase() === 'canvas') as unknown as MockElement;
+			const pointerMoveListeners = canvas.eventListeners['pointermove'] ?? [];
+			for (const fn of pointerMoveListeners) {
+				fn({ clientX: 250, clientY: 250 });
+			}
+
+			// Default behavior: tooltip stays hidden so canvas remains clean
+			const tooltip = container.querySelector('.brain-context-graph-tooltip');
+			expect(tooltip?.className).toContain('is-hidden');
+		});
+
+		it('shows tooltip with connection titles when hovering over peripheral node with sneakPeek when enableTooltip is true', () => {
+			const tooltipContainer = new MockElement('div');
+			const tooltipEngine = new ContextGraphEngine(tooltipContainer as unknown as HTMLElement, {
+				enableTooltip: true,
+			});
+
 			const data: GraphData = {
 				seed: { type: 'note', path: 'Seed.md' },
 				nodes: [
@@ -220,9 +262,9 @@ describe('ContextGraphEngine', () => {
 				],
 				edges: [{ id: 'Seed---NodeB', source: 'Seed.md', target: 'NodeB.md', similarity: 0.85 }],
 			};
-			engine.setData(data);
+			tooltipEngine.setData(data);
 
-			const nodeB = engine.getNodes().find((n) => n.id === 'NodeB.md');
+			const nodeB = tooltipEngine.getNodes().find((n) => n.id === 'NodeB.md');
 			expect(nodeB).toBeDefined();
 			if (nodeB) {
 				nodeB.x = 250;
@@ -230,13 +272,13 @@ describe('ContextGraphEngine', () => {
 			}
 
 			// Simulate hovering over Node B
-			const canvas = container.children.find((c) => c.tagName.toLowerCase() === 'canvas') as unknown as MockElement;
+			const canvas = tooltipContainer.children.find((c) => c.tagName.toLowerCase() === 'canvas') as unknown as MockElement;
 			const pointerMoveListeners = canvas.eventListeners['pointermove'] ?? [];
 			for (const fn of pointerMoveListeners) {
 				fn({ clientX: 250, clientY: 250 });
 			}
 
-			const tooltip = container.querySelector('.brain-context-graph-tooltip');
+			const tooltip = tooltipContainer.querySelector('.brain-context-graph-tooltip');
 			expect(tooltip?.className).not.toContain('is-hidden');
 			expect(tooltip?.textContent).toContain('Related 1');
 			expect(tooltip?.textContent).toContain('Related 5');
@@ -246,46 +288,14 @@ describe('ContextGraphEngine', () => {
 			expect(numbers?.length).toBe(5);
 			expect(numbers?.[0]?.textContent).toBe('1.');
 			expect(numbers?.[4]?.textContent).toBe('5.');
-		});
-
-		it('hides tooltip when pointer moves away from nodes', () => {
-			const data: GraphData = {
-				seed: { type: 'note', path: 'Seed.md' },
-				nodes: [
-					{ id: 'Seed.md', label: 'Seed', isSeed: true, hop: 0, radius: 10 },
-					{
-						id: 'NodeB.md',
-						label: 'Node B',
-						isSeed: false,
-						hop: 1,
-						similarity: 0.85,
-						radius: 7,
-						sneakPeek: ['Related 1'],
-					},
-				],
-				edges: [{ id: 'Seed---NodeB', source: 'Seed.md', target: 'NodeB.md', similarity: 0.85 }],
-			};
-			engine.setData(data);
-			const nodeB = engine.getNodes().find((n) => n.id === 'NodeB.md');
-			if (nodeB) {
-				nodeB.x = 250;
-				nodeB.y = 250;
-			}
-
-			const canvas = container.children.find((c) => c.tagName.toLowerCase() === 'canvas') as unknown as MockElement;
-			const pointerMoveListeners = canvas.eventListeners['pointermove'] ?? [];
-			// Hover over Node B
-			for (const fn of pointerMoveListeners) {
-				fn({ clientX: 250, clientY: 250 });
-			}
-			const tooltip = container.querySelector('.brain-context-graph-tooltip');
-			expect(tooltip?.className).not.toContain('is-hidden');
 
 			// Hover over empty space
 			for (const fn of pointerMoveListeners) {
 				fn({ clientX: 700, clientY: 700 });
 			}
 			expect(tooltip?.className).toContain('is-hidden');
+
+			tooltipEngine.destroy();
 		});
 	});
 
@@ -390,5 +400,40 @@ describe('ContextGraphEngine', () => {
 			expect(rippleCalls.length).toBeGreaterThanOrEqual(2);
 			expect(strokeSpy).toHaveBeenCalled();
 		});
+
+		it('initializes hop-2 satellites around their parent hop-1 star rather than origin', () => {
+			const data: GraphData = {
+				seed: { type: 'note', path: 'Seed.md' },
+				nodes: [
+					{ id: 'Seed.md', label: 'Seed', isSeed: true, hop: 0, radius: 10 },
+					{ id: 'H1.md', label: 'H1', isSeed: false, hop: 1, radius: 7 },
+					{ id: 'Sat1.md', label: 'Sat1', isSeed: false, hop: 2, radius: 4.5, parentId: 'H1.md' },
+					{ id: 'Sat2.md', label: 'Sat2', isSeed: false, hop: 2, radius: 4.5, parentId: 'H1.md' },
+				],
+				edges: [
+					{ id: 'Seed---H1', source: 'Seed.md', target: 'H1.md', similarity: 0.8 },
+					{ id: 'H1---Sat1', source: 'H1.md', target: 'Sat1.md', similarity: 0.7, isSecondary: true, kind: 'satellite' },
+					{ id: 'H1---Sat2', source: 'H1.md', target: 'Sat2.md', similarity: 0.65, isSecondary: true, kind: 'satellite' },
+				],
+			};
+			engine.setData(data);
+
+			const h1 = engine.getNodes().find((n) => n.id === 'H1.md')!;
+			const sat1 = engine.getNodes().find((n) => n.id === 'Sat1.md')!;
+			const sat2 = engine.getNodes().find((n) => n.id === 'Sat2.md')!;
+
+			expect(h1).toBeDefined();
+			expect(sat1).toBeDefined();
+			expect(sat2).toBeDefined();
+
+			// Distance from satellite to parent should be in orbit range (~50-70px), not at canvas center or (0,0)
+			const dist1 = Math.hypot((sat1.x ?? 0) - (h1.x ?? 0), (sat1.y ?? 0) - (h1.y ?? 0));
+			const dist2 = Math.hypot((sat2.x ?? 0) - (h1.x ?? 0), (sat2.y ?? 0) - (h1.y ?? 0));
+			expect(dist1).toBeGreaterThan(40);
+			expect(dist1).toBeLessThan(90);
+			expect(dist2).toBeGreaterThan(40);
+			expect(dist2).toBeLessThan(90);
+		});
 	});
 });
+
