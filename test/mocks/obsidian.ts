@@ -5,8 +5,17 @@ if (typeof (globalThis as unknown as { window?: unknown }).window === 'undefined
 export class MockElement {
 	tagName: string;
 	className: string = '';
-	textContent: string = '';
 	children: MockElement[] = [];
+	private _textContent: string = '';
+	get textContent(): string {
+		if (this.children.length === 0) {
+			return this._textContent;
+		}
+		return this._textContent + this.children.map((c) => c.textContent).join(' ');
+	}
+	set textContent(val: string) {
+		this._textContent = val;
+	}
 	parentElement: MockElement | null = null;
 	attributes: Record<string, string> = {};
 	eventListeners: Record<string, Array<(e?: any) => void>> = {};
@@ -49,8 +58,11 @@ export class MockElement {
 				lineTo: () => {},
 				fillText: () => {},
 				measureText: (text: string) => ({ width: text.length * 7 }),
+				createRadialGradient: () => ({ addColorStop: () => {} }),
 				fillStyle: '',
 				strokeStyle: '',
+				shadowColor: '',
+				shadowBlur: 0,
 				lineWidth: 1,
 				font: '',
 				textAlign: '',

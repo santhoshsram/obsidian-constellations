@@ -53,18 +53,22 @@ describe('graph data layer', () => {
 	});
 
 	describe('buildContextGraph with note seed', () => {
-		it('constructs a 2-hop graph with deduplicated nodes and edges meeting threshold', async () => {
+		it('constructs a strict hub-and-spoke star topology with sneakPeek connections and no hop 2 nodes', async () => {
 			const index = new ChunkIndex(new BruteForceVectorStore(dim));
 
-			// Setup 4 notes:
+			// Setup 5 notes:
 			// Seed: Alpha (direction 0)
 			// Hop 1: Beta (very close to direction 0)
-			// Hop 2: Gamma (close to Beta, but further from Alpha)
+			// Related to Beta: Gamma, Omega, N1, N2, N3
 			// Unrelated: Delta (orthogonal direction 3)
 			const v0 = unitVector(dim, 0);
 			const vBeta = blendVectors(v0, unitVector(dim, 1), 0.9, 0.1); // sim to Alpha ~ 0.99
-			const vGamma = blendVectors(vBeta, unitVector(dim, 2), 0.85, 0.15); // sim to Beta ~ 0.98, sim to Alpha ~ 0.84
-			const vDelta = unitVector(dim, 3); // sim 0
+			const vGamma = blendVectors(vBeta, unitVector(dim, 2), 0.85, 0.15); // sim to Beta ~ 0.98
+			const vOmega = blendVectors(vBeta, unitVector(dim, 3), 0.8, 0.2); // sim to Beta ~ 0.97
+			const vN1 = blendVectors(vBeta, unitVector(dim, 1), 0.88, 0.12);
+			const vN2 = blendVectors(vBeta, unitVector(dim, 2), 0.86, 0.14);
+			const vN3 = blendVectors(vBeta, unitVector(dim, 3), 0.84, 0.16);
+			const vDelta = unitVector(dim, 3); // sim to Alpha ~ 0
 
 			await index.updateFile(
 				'Alpha.md',
@@ -82,6 +86,26 @@ describe('graph data layer', () => {
 				async () => [vGamma],
 			);
 			await index.updateFile(
+				'Omega.md',
+				[{ filePath: 'Omega.md', headingPath: [], titleContext: 'Omega', text: 'Omega text' }],
+				async () => [vOmega],
+			);
+			await index.updateFile(
+				'N1.md',
+				[{ filePath: 'N1.md', headingPath: [], titleContext: 'N1', text: 'N1 text' }],
+				async () => [vN1],
+			);
+			await index.updateFile(
+				'N2.md',
+				[{ filePath: 'N2.md', headingPath: [], titleContext: 'N2', text: 'N2 text' }],
+				async () => [vN2],
+			);
+			await index.updateFile(
+				'N3.md',
+				[{ filePath: 'N3.md', headingPath: [], titleContext: 'N3', text: 'N3 text' }],
+				async () => [vN3],
+			);
+			await index.updateFile(
 				'Delta.md',
 				[{ filePath: 'Delta.md', headingPath: [], titleContext: 'Delta', text: 'Delta text' }],
 				async () => [vDelta],
@@ -89,19 +113,16 @@ describe('graph data layer', () => {
 
 			const seed: GraphSeed = { type: 'note', path: 'Alpha.md' };
 			const graph = await buildContextGraph(index, seed, {
-				graphHop1Count: 1, // Only Beta
-				graphHop2Count: 1, // From Beta -> Gamma
+				graphHop1Count: 1,
+				graphHop2Count: 5,
 				graphSimilarityThreshold: 0.8,
 			});
 
 			expect(graph.seed).toEqual(seed);
 
-			// Nodes should contain Alpha (hop 0), Beta (hop 1), Gamma (hop 2)
+			// Nodes should contain only Alpha (hop 0) and Beta (hop 1).
 			const nodeIds = graph.nodes.map((n) => n.id);
-			expect(nodeIds).toContain('Alpha.md');
-			expect(nodeIds).toContain('Beta.md');
-			expect(nodeIds).toContain('Gamma.md');
-			expect(nodeIds).not.toContain('Delta.md');
+			expect(nodeIds).toEqual(['Alpha.md', 'Beta.md']);
 
 			const alphaNode = graph.nodes.find((n) => n.id === 'Alpha.md');
 			expect(alphaNode?.isSeed).toBe(true);
@@ -111,51 +132,52 @@ describe('graph data layer', () => {
 			expect(betaNode?.isSeed).toBe(false);
 			expect(betaNode?.hop).toBe(1);
 
-			const gammaNode = graph.nodes.find((n) => n.id === 'Gamma.md');
-			expect(gammaNode?.isSeed).toBe(false);
-			expect(gammaNode?.hop).toBe(2);
+			// Sneak peek data: Beta contains top related note titles up to 5
+			expect(betaNode?.sneakPeek).toBeDefined();
+			expect(betaNode?.sneakPeek?.length).toBe(5);
+			expect(betaNode?.sneakPeek).toContain('Gamma');
+			expect(betaNode?.sneakPeek).toContain('Omega');
+			expect(betaNode?.sneakPeek).not.toContain('Alpha');
+			expect(betaNode?.sneakPeek).not.toContain('Beta');
 
-			// Check edges:
-			// Alpha - Beta (sim > 0.9)
-			// Beta - Gamma (sim > 0.9)
-			// Alpha - Gamma (sim ~ 0.84 >= 0.8)
-			expect(graph.edges.length).toBeGreaterThanOrEqual(2);
-			for (const edge of graph.edges) {
-				expect(edge.similarity).toBeGreaterThanOrEqual(0.8);
-			}
-
-			// Undirected edge deduplication: no (A, B) and (B, A) duplicate
-			const edgePairs = graph.edges.map((e) =>
-				typeof e.source === 'string' && typeof e.target === 'string'
-					? [e.source, e.target].sort().join('---')
-					: '',
-			);
-			const uniquePairs = new Set(edgePairs);
-			expect(edgePairs.length).toBe(uniquePairs.size);
+			// Check edges: Only strictly seed -> hop 1 edges (Alpha <-> Beta)
+			expect(graph.edges.length).toBe(1);
+			const edge = graph.edges[0];
+			expect(edge?.similarity).toBeGreaterThanOrEqual(0.8);
+			const endpoints = [edge?.source, edge?.target].sort();
+			expect(endpoints).toEqual(['Alpha.md', 'Beta.md']);
 		});
 
-		it('prevents hairball by ensuring seed connects only to Hop 1 nodes, not Hop 2 nodes', async () => {
+		it('removes all peer cross-edges between hop 1 nodes to maintain strict star topology', async () => {
 			const index = new ChunkIndex(new BruteForceVectorStore(dim));
 
 			const v0 = unitVector(dim, 0);
 			const vBeta = blendVectors(v0, unitVector(dim, 1), 0.9, 0.1);
-			const vGamma = blendVectors(vBeta, unitVector(dim, 2), 0.85, 0.15);
+			const vZeta = blendVectors(v0, unitVector(dim, 1), 0.88, 0.12); // also very close to Beta
 
 			await index.updateFile('Alpha.md', [{ filePath: 'Alpha.md', headingPath: [], titleContext: 'Alpha', text: 'Alpha text' }], async () => [v0]);
 			await index.updateFile('Beta.md', [{ filePath: 'Beta.md', headingPath: [], titleContext: 'Beta', text: 'Beta text' }], async () => [vBeta]);
-			await index.updateFile('Gamma.md', [{ filePath: 'Gamma.md', headingPath: [], titleContext: 'Gamma', text: 'Gamma text' }], async () => [vGamma]);
+			await index.updateFile('Zeta.md', [{ filePath: 'Zeta.md', headingPath: [], titleContext: 'Zeta', text: 'Zeta text' }], async () => [vZeta]);
 
 			const graph = await buildContextGraph(index, { type: 'note', path: 'Alpha.md' }, {
-				graphHop1Count: 1,
-				graphHop2Count: 1,
+				graphHop1Count: 2,
+				graphHop2Count: 0,
 				graphSimilarityThreshold: 0.8,
 			});
 
-			const alphaEdges = graph.edges.filter((e) => e.source === 'Alpha.md' || e.target === 'Alpha.md');
-			expect(alphaEdges.length).toBe(1);
-			const connectedToAlpha = alphaEdges.map((e) => (e.source === 'Alpha.md' ? e.target : e.source));
-			expect(connectedToAlpha).toEqual(['Beta.md']);
-			expect(connectedToAlpha).not.toContain('Gamma.md');
+			expect(graph.nodes.map((n) => n.id).sort()).toEqual(['Alpha.md', 'Beta.md', 'Zeta.md']);
+
+			// Both connect to Alpha, but Beta and Zeta MUST NOT have a peer cross-edge
+			expect(graph.edges.length).toBe(2);
+			for (const edge of graph.edges) {
+				const isSeedEdge = edge.source === 'Alpha.md' || edge.target === 'Alpha.md';
+				expect(isSeedEdge).toBe(true);
+			}
+			const crossEdge = graph.edges.find((e) =>
+				(e.source === 'Beta.md' && e.target === 'Zeta.md') ||
+				(e.source === 'Zeta.md' && e.target === 'Beta.md')
+			);
+			expect(crossEdge).toBeUndefined();
 		});
 
 		it('handles non-existent seed note gracefully', async () => {
@@ -217,7 +239,17 @@ describe('graph data layer', () => {
 			expect(queryNode?.hop).toBe(0);
 			expect(queryNode?.label).toBe('"quantum computing"');
 
-			expect(graph.nodes.some((n) => n.id === 'Alpha.md')).toBe(true);
+			const alphaNode = graph.nodes.find((n) => n.id === 'Alpha.md');
+			expect(alphaNode).toBeDefined();
+			expect(alphaNode?.sneakPeek).toBeDefined();
+			expect(alphaNode?.sneakPeek).toContain('Beta');
+
+			// All edges connect to __query__
+			expect(graph.edges.length).toBe(2);
+			for (const edge of graph.edges) {
+				const isSeedEdge = edge.source === '__query__' || edge.target === '__query__';
+				expect(isSeedEdge).toBe(true);
+			}
 		});
 	});
 });

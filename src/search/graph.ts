@@ -21,6 +21,7 @@ export interface GraphNode {
 	hop: number;
 	similarity?: number;
 	radius?: number;
+	sneakPeek?: string[];
 	x?: number;
 	y?: number;
 	vx?: number;
@@ -90,7 +91,6 @@ export async function buildContextGraph(
 	initialHop1?: Array<{ filePath: string; score: number }>,
 ): Promise<GraphData> {
 	const hop1Count = Math.max(1, options.graphHop1Count);
-	const hop2Count = Math.max(0, options.graphHop2Count);
 	const threshold = options.graphSimilarityThreshold;
 
 	const nodes: GraphNode[] = [];
@@ -108,8 +108,22 @@ export async function buildContextGraph(
 	};
 
 	let queryVector: Float32Array | null = null;
-	// Track parent Hop 1 notes that discovered each Hop 2 note
-	const hop2Parents = new Map<string, Array<{ parentId: string; score: number }>>();
+
+	const computeSneakPeek = (file: string): string[] => {
+		const fileVecs = getVectors(file);
+		const candidates: Array<{ file: string; score: number }> = [];
+		for (const other of index.indexedFiles()) {
+			if (other === file) continue;
+			if (seed.type === 'note' && other === seed.path) continue;
+			const otherVecs = getVectors(other);
+			const sim = maxNoteSimilarity(fileVecs, otherVecs);
+			if (sim >= threshold) {
+				candidates.push({ file: other, score: sim });
+			}
+		}
+		candidates.sort((a, b) => b.score - a.score);
+		return candidates.slice(0, 5).map((c) => noteLabel(c.file));
+	};
 
 	if (seed.type === 'note') {
 		const seedChunks = index.chunksForFile(seed.path);
@@ -145,6 +159,7 @@ export async function buildContextGraph(
 					hop: 1,
 					similarity: item.score,
 					radius: 7,
+					sneakPeek: computeSneakPeek(item.filePath),
 				});
 			}
 		} else {
@@ -173,42 +188,8 @@ export async function buildContextGraph(
 					hop: 1,
 					similarity: item.score,
 					radius: 7,
+					sneakPeek: computeSneakPeek(item.file),
 				});
-			}
-		}
-
-		// Hop 2: Related notes for each Hop 1 note
-		if (hop2Count > 0) {
-			for (const h1File of hop1Files) {
-				const h1Vecs = getVectors(h1File);
-				const candidateHop2: Array<{ file: string; score: number }> = [];
-				for (const file of index.indexedFiles()) {
-					if (visitedFiles.has(file)) continue;
-					const vecs = getVectors(file);
-					const sim = maxNoteSimilarity(h1Vecs, vecs);
-					if (sim >= threshold) {
-						candidateHop2.push({ file, score: sim });
-					}
-				}
-				candidateHop2.sort((a, b) => b.score - a.score);
-				for (const item of candidateHop2.slice(0, hop2Count)) {
-					const existing = hop2Parents.get(item.file) ?? [];
-					existing.push({ parentId: h1File, score: item.score });
-					hop2Parents.set(item.file, existing);
-
-					if (!visitedFiles.has(item.file)) {
-						visitedFiles.add(item.file);
-						nodes.push({
-							id: item.file,
-							label: noteLabel(item.file),
-							filePath: item.file,
-							isSeed: false,
-							hop: 2,
-							similarity: item.score,
-							radius: 5,
-						});
-					}
-				}
 			}
 		}
 	} else {
@@ -253,50 +234,13 @@ export async function buildContextGraph(
 				hop: 1,
 				similarity: item.score,
 				radius: 7,
+				sneakPeek: computeSneakPeek(item.file),
 			});
-		}
-
-		// Hop 2
-		if (hop2Count > 0) {
-			for (const h1File of hop1Files) {
-				const h1Vecs = getVectors(h1File);
-				const candidateHop2: Array<{ file: string; score: number }> = [];
-				for (const file of index.indexedFiles()) {
-					if (visitedFiles.has(file)) continue;
-					const vecs = getVectors(file);
-					const sim = maxNoteSimilarity(h1Vecs, vecs);
-					if (sim >= threshold) {
-						candidateHop2.push({ file, score: sim });
-					}
-				}
-				candidateHop2.sort((a, b) => b.score - a.score);
-				for (const item of candidateHop2.slice(0, hop2Count)) {
-					const existing = hop2Parents.get(item.file) ?? [];
-					existing.push({ parentId: h1File, score: item.score });
-					hop2Parents.set(item.file, existing);
-
-					if (!visitedFiles.has(item.file)) {
-						visitedFiles.add(item.file);
-						nodes.push({
-							id: item.file,
-							label: noteLabel(item.file),
-							filePath: item.file,
-							isSeed: false,
-							hop: 2,
-							similarity: item.score,
-							radius: 5,
-						});
-					}
-				}
-			}
 		}
 	}
 
-	// Build edges with structured 2-hop topology to prevent hairball cliques:
-	// 1. Seed connects ONLY to Hop 1 nodes meeting threshold (or top matches).
-	// 2. Hop 2 nodes connect to their Hop 1 parent(s).
-	// 3. Peer cross-edges (Hop 1 <-> Hop 1 or Hop 2 <-> Hop 2) are filtered by threshold
-	//    and capped per node to prevent complete graph explosion.
+	// Build edges with strict Hub-and-Spoke (star) topology:
+	// Seed connects ONLY to Hop 1 nodes. No Hop 2 nodes, and no peer cross-edges.
 	const edges: GraphEdge[] = [];
 	const seenPairs = new Set<string>();
 
@@ -315,9 +259,8 @@ export async function buildContextGraph(
 
 	const seedNode = nodes.find((n) => n.isSeed);
 	const hop1Nodes = nodes.filter((n) => n.hop === 1);
-	const hop2Nodes = nodes.filter((n) => n.hop === 2);
 
-	// 1. Seed -> Hop 1 edges
+	// Seed -> Hop 1 edges
 	if (seedNode) {
 		for (const h1 of hop1Nodes) {
 			let sim = 0;
@@ -338,73 +281,6 @@ export async function buildContextGraph(
 				}
 			}
 			addEdge(seedNode.id, h1.id, Math.max(0.4, sim));
-		}
-	}
-
-	// 2. Hop 1 -> Hop 2 edges
-	for (const h2 of hop2Nodes) {
-		const parents = hop2Parents.get(h2.id) ?? [];
-		parents.sort((a, b) => b.score - a.score);
-		let linked = false;
-		for (const p of parents) {
-			if (p.score >= threshold || !linked) {
-				addEdge(p.parentId, h2.id, Math.max(0.5, p.score));
-				linked = true;
-			}
-		}
-	}
-
-	// 3. Peer cross-edges among Hop 1 nodes (max 2 cross-edges per Hop 1 node)
-	const h1CrossCounts = new Map<string, number>();
-	const candidateH1Edges: Array<{ a: string; b: string; sim: number }> = [];
-
-	for (let i = 0; i < hop1Nodes.length; i++) {
-		for (let j = i + 1; j < hop1Nodes.length; j++) {
-			const a = hop1Nodes[i];
-			const b = hop1Nodes[j];
-			if (!a?.filePath || !b?.filePath) continue;
-			const sim = maxNoteSimilarity(getVectors(a.filePath), getVectors(b.filePath));
-			if (sim >= threshold) {
-				candidateH1Edges.push({ a: a.id, b: b.id, sim });
-			}
-		}
-	}
-	candidateH1Edges.sort((x, y) => y.sim - x.sim);
-	for (const cand of candidateH1Edges) {
-		const countA = h1CrossCounts.get(cand.a) ?? 0;
-		const countB = h1CrossCounts.get(cand.b) ?? 0;
-		if (countA < 2 && countB < 2) {
-			if (addEdge(cand.a, cand.b, cand.sim)) {
-				h1CrossCounts.set(cand.a, countA + 1);
-				h1CrossCounts.set(cand.b, countB + 1);
-			}
-		}
-	}
-
-	// 4. Peer cross-edges among Hop 2 nodes (max 1 cross-edge per Hop 2 node)
-	const h2CrossCounts = new Map<string, number>();
-	const candidateH2Edges: Array<{ a: string; b: string; sim: number }> = [];
-
-	for (let i = 0; i < hop2Nodes.length; i++) {
-		for (let j = i + 1; j < hop2Nodes.length; j++) {
-			const a = hop2Nodes[i];
-			const b = hop2Nodes[j];
-			if (!a?.filePath || !b?.filePath) continue;
-			const sim = maxNoteSimilarity(getVectors(a.filePath), getVectors(b.filePath));
-			if (sim >= threshold) {
-				candidateH2Edges.push({ a: a.id, b: b.id, sim });
-			}
-		}
-	}
-	candidateH2Edges.sort((x, y) => y.sim - x.sim);
-	for (const cand of candidateH2Edges) {
-		const countA = h2CrossCounts.get(cand.a) ?? 0;
-		const countB = h2CrossCounts.get(cand.b) ?? 0;
-		if (countA < 1 && countB < 1) {
-			if (addEdge(cand.a, cand.b, cand.sim)) {
-				h2CrossCounts.set(cand.a, countA + 1);
-				h2CrossCounts.set(cand.b, countB + 1);
-			}
 		}
 	}
 

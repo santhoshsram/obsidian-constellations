@@ -233,7 +233,8 @@ export class RelatedNotesView extends ItemView {
 
 		this.graphEngine = new ContextGraphEngine(graphContainer, {
 			onNodeClick: (node) => {
-				if (node.filePath) {
+				if (node.filePath && !node.isSeed) {
+					this.graphEngine?.optimisticFocus(node.id, node.label);
 					void this.plugin.brain
 						.getGraphData({ type: 'note', path: node.filePath })
 						.then((d) => this.graphEngine?.setData(d));

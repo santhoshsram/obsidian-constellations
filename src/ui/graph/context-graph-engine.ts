@@ -44,6 +44,7 @@ export class ContextGraphEngine {
 	private nodes: GraphNode[] = [];
 	private edges: GraphEdge[] = [];
 	private hoveredNode: GraphNode | null = null;
+	private tooltipEl: HTMLElement;
 
 	private panX = 0;
 	private panY = 0;
@@ -58,6 +59,9 @@ export class ContextGraphEngine {
 
 	private resizeObserver: ResizeObserver | null = null;
 	private animFrameId: number | null = null;
+	private glowAnimFrameId: number | null = null;
+	private optimisticLoading = false;
+	private optimisticStartTime = 0;
 
 	constructor(
 		private container: HTMLElement,
@@ -68,6 +72,10 @@ export class ContextGraphEngine {
 		});
 
 		this.ctx = this.canvas.getContext('2d');
+
+		this.tooltipEl = container.createDiv({
+			cls: 'brain-context-graph-tooltip is-hidden',
+		});
 
 		const rect = container.getBoundingClientRect?.() ?? { width: 800, height: 600 };
 		const width = rect.width || 800;
@@ -83,10 +91,9 @@ export class ContextGraphEngine {
 				let score = d.similarity ?? 0.6;
 				if (score > 1.0) score = 1 / (1 + Math.exp(-score));
 				const norm = Math.max(0, Math.min(1, (score - 0.4) / 0.55));
-				if (d.hop === 1) {
-					return (110 + (1 - norm) * 45) * scale;
-				}
-				return (210 + (1 - norm) * 45) * scale;
+				const minRadial = 90 * scale;
+				const maxRadial = 250 * scale;
+				return minRadial + (1 - norm) * (maxRadial - minRadial);
 			},
 			width / 2,
 			height / 2,
@@ -116,13 +123,9 @@ export class ContextGraphEngine {
 			if (score > 1.0) score = 1 / (1 + Math.exp(-score));
 			const normScore = Math.max(0, Math.min(1, (score - 0.4) / 0.55));
 
-			const sId = getEndpointId(edge.source);
-			const tId = getEndpointId(edge.target);
-			const sNode = this.nodes.find((n) => n.id === sId);
-			const tNode = this.nodes.find((n) => n.id === tId);
-			const isSeedEdge = sNode?.isSeed || tNode?.isSeed;
-			const baseDist = isSeedEdge ? 115 * scale : 75 * scale;
-			return Math.max(35 * scale, baseDist * (1.15 - normScore * 0.3));
+			const minLinkDist = 80 * scale;
+			const maxLinkDist = 240 * scale;
+			return minLinkDist + (1 - normScore) * (maxLinkDist - minLinkDist);
 		});
 
 		this.simulation.force(
@@ -136,16 +139,15 @@ export class ContextGraphEngine {
 				let score = d.similarity ?? 0.6;
 				if (score > 1.0) score = 1 / (1 + Math.exp(-score));
 				const norm = Math.max(0, Math.min(1, (score - 0.4) / 0.55));
-				if (d.hop === 1) {
-					return (110 + (1 - norm) * 45) * scale;
-				}
-				return (210 + (1 - norm) * 45) * scale;
+				const minRadial = 90 * scale;
+				const maxRadial = 250 * scale;
+				return minRadial + (1 - norm) * (maxRadial - minRadial);
 			})
-			.strength((d: GraphNode) => (d.isSeed ? 1.0 : d.hop === 1 ? 0.75 : 0.6));
+			.strength((d: GraphNode) => (d.isSeed ? 1.0 : 0.75));
 
 		this.simulation.force(
 			'collide',
-			forceCollide<GraphNode>((d) => (d.radius ?? 8) + 18 * scale).iterations(2),
+			forceCollide<GraphNode>((d) => (d.radius ?? 8) + 24 * scale).iterations(3),
 		);
 	}
 
@@ -157,7 +159,94 @@ export class ContextGraphEngine {
 		return this.edges;
 	}
 
+	getLinkDistance(edge: GraphEdge): number {
+		const accessor = this.linkForce.distance();
+		if (typeof accessor === 'function') {
+			return (accessor as (e: GraphEdge) => number)(edge);
+		}
+		return typeof accessor === 'number' ? accessor : 0;
+	}
+
+	getRadialRadius(node: GraphNode): number {
+		const accessor = this.radialForce.radius();
+		if (typeof accessor === 'function') {
+			return (accessor as (n: GraphNode) => number)(node);
+		}
+		return typeof accessor === 'number' ? accessor : 0;
+	}
+
+	isOptimisticLoading(): boolean {
+		return this.optimisticLoading;
+	}
+
+	optimisticFocus(nodeId: string, newTitle?: string): void {
+		const targetNode = this.nodes.find((n) => n.id === nodeId);
+		if (!targetNode) return;
+
+		this.tooltipEl?.addClass('is-hidden');
+
+		const rect = this.container.getBoundingClientRect?.() ?? { width: 800, height: 600 };
+		const width = Math.max(100, rect.width || 800);
+		const height = Math.max(100, rect.height || 600);
+		const cx = width / 2;
+		const cy = height / 2;
+
+		targetNode.isSeed = true;
+		targetNode.hop = 0;
+		if (newTitle) {
+			targetNode.label = newTitle;
+		}
+		targetNode.x = cx;
+		targetNode.y = cy;
+		targetNode.fx = cx;
+		targetNode.fy = cy;
+		targetNode.vx = 0;
+		targetNode.vy = 0;
+
+		this.nodes = [targetNode];
+		this.edges = [];
+		this.hoveredNode = null;
+		this.canvas.removeClass('is-hovering-node');
+
+		this.simulation.nodes(this.nodes);
+		this.linkForce.links(this.edges);
+		this.simulation.stop();
+
+		this.optimisticLoading = true;
+		this.optimisticStartTime = Date.now();
+		this.panX = 0;
+		this.panY = 0;
+		this.zoom = 1;
+
+		this.startLoadingGlowLoop();
+	}
+
+	private startLoadingGlowLoop(): void {
+		if (!this.optimisticLoading) return;
+		this.render();
+		if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+			this.glowAnimFrameId = window.requestAnimationFrame(() => {
+				if (this.optimisticLoading) {
+					this.startLoadingGlowLoop();
+				}
+			});
+		}
+	}
+
+	private stopLoadingGlow(): void {
+		this.optimisticLoading = false;
+		if (this.glowAnimFrameId !== null) {
+			if (typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+				window.cancelAnimationFrame(this.glowAnimFrameId);
+			} else if (typeof cancelAnimationFrame === 'function') {
+				cancelAnimationFrame(this.glowAnimFrameId);
+			}
+			this.glowAnimFrameId = null;
+		}
+	}
+
 	setData(data: GraphData): void {
+		this.stopLoadingGlow();
 		const existingPositions = new Map<
 			string,
 			{ x?: number; y?: number; vx?: number; vy?: number }
@@ -191,23 +280,6 @@ export class ContextGraphEngine {
 			const angle = (i / h1Count) * Math.PI * 2 - Math.PI / 2;
 			h1Angles.set(h1.id, angle);
 		});
-
-		const h2ChildrenByParent = new Map<string, GraphNode[]>();
-		for (const edge of data.edges) {
-			const sId = getEndpointId(edge.source);
-			const tId = getEndpointId(edge.target);
-			const sNode = data.nodes.find((n) => n.id === sId);
-			const tNode = data.nodes.find((n) => n.id === tId);
-			if (sNode?.hop === 1 && tNode?.hop === 2) {
-				const list = h2ChildrenByParent.get(sId) ?? [];
-				if (!list.some((c) => c.id === tNode.id)) list.push(tNode);
-				h2ChildrenByParent.set(sId, list);
-			} else if (tNode?.hop === 1 && sNode?.hop === 2) {
-				const list = h2ChildrenByParent.get(tId) ?? [];
-				if (!list.some((c) => c.id === sNode.id)) list.push(sNode);
-				h2ChildrenByParent.set(tId, list);
-			}
-		}
 
 		this.nodes = data.nodes.map((n) => {
 			const existing = existingPositions.get(n.id);
@@ -245,31 +317,14 @@ export class ContextGraphEngine {
 			if (score > 1.0) score = 1 / (1 + Math.exp(-score));
 			const norm = Math.max(0, Math.min(1, (score - 0.4) / 0.55));
 
-			if (n.hop === 1) {
-				const angle = h1Angles.get(n.id) ?? 0;
-				const r = (110 + (1 - norm) * 45) * scale;
-				return {
-					...n,
-					x: cx + Math.cos(angle) * r,
-					y: cy + Math.sin(angle) * r,
-				};
-			}
-
-			const parentEntry = [...h2ChildrenByParent.entries()].find(([_, children]) =>
-				children.some((c) => c.id === n.id),
-			);
-			const parentId = parentEntry?.[0];
-			const parentAngle = parentId ? (h1Angles.get(parentId) ?? 0) : Math.random() * Math.PI * 2;
-			const siblings = parentEntry ? parentEntry[1] : [n];
-			const sibIndex = siblings.findIndex((c) => c.id === n.id);
-			const angleOffset = siblings.length > 1 ? (sibIndex - (siblings.length - 1) / 2) * 0.35 : 0;
-			const childAngle = parentAngle + angleOffset;
-			const r = (210 + (1 - norm) * 45) * scale;
-
+			const angle = h1Angles.get(n.id) ?? 0;
+			const minRadial = 90 * scale;
+			const maxRadial = 250 * scale;
+			const r = minRadial + (1 - norm) * (maxRadial - minRadial);
 			return {
 				...n,
-				x: cx + Math.cos(childAngle) * r,
-				y: cy + Math.sin(childAngle) * r,
+				x: cx + Math.cos(angle) * r,
+				y: cy + Math.sin(angle) * r,
 			};
 		});
 
@@ -339,6 +394,7 @@ export class ContextGraphEngine {
 	}
 
 	private onWheel = (e: WheelEvent): void => {
+		this.tooltipEl.addClass('is-hidden');
 		e.preventDefault?.();
 		const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
 		const newZoom = Math.max(0.2, Math.min(4.0, this.zoom * zoomFactor));
@@ -354,6 +410,7 @@ export class ContextGraphEngine {
 	};
 
 	private onPointerDown = (e: PointerEvent): void => {
+		this.tooltipEl.addClass('is-hidden');
 		this.hasDragged = false;
 		this.dragStartX = e.clientX;
 		this.dragStartY = e.clientY;
@@ -378,6 +435,7 @@ export class ContextGraphEngine {
 		}
 
 		if (this.draggedNode) {
+			this.tooltipEl.addClass('is-hidden');
 			const rect = this.canvas.getBoundingClientRect?.() ?? { left: 0, top: 0 };
 			const localX = e.clientX - rect.left;
 			const localY = e.clientY - rect.top;
@@ -388,6 +446,7 @@ export class ContextGraphEngine {
 		}
 
 		if (this.isDraggingCanvas) {
+			this.tooltipEl.addClass('is-hidden');
 			this.panX += e.movementX ?? dx;
 			this.panY += e.movementY ?? dy;
 			this.dragStartX = e.clientX;
@@ -402,9 +461,62 @@ export class ContextGraphEngine {
 			this.hoveredNode = hovered;
 			this.canvas.toggleClass('is-hovering-node', hovered !== null);
 			this.options.onNodeHover?.(hovered);
+			this.updateTooltip(hovered, e.clientX, e.clientY);
 			this.requestRender();
+		} else if (hovered && !hovered.isSeed && hovered.sneakPeek && hovered.sneakPeek.length > 0) {
+			this.positionTooltip(e.clientX, e.clientY);
 		}
 	};
+
+	private updateTooltip(node: GraphNode | null, clientX: number, clientY: number): void {
+		if (!this.tooltipEl) return;
+		if (!node || node.isSeed || !node.sneakPeek || node.sneakPeek.length === 0) {
+			this.tooltipEl.addClass('is-hidden');
+			return;
+		}
+
+		this.tooltipEl.empty();
+		this.tooltipEl.createDiv({
+			cls: 'brain-context-graph-tooltip-header',
+			text: 'Connections',
+		});
+		const list = this.tooltipEl.createDiv({
+			cls: 'brain-context-graph-tooltip-list',
+		});
+		node.sneakPeek.slice(0, 5).forEach((title, idx) => {
+			const item = list.createDiv({
+				cls: 'brain-context-graph-tooltip-item',
+			});
+			item.createSpan({
+				cls: 'brain-context-graph-tooltip-number',
+				text: `${idx + 1}.`,
+			});
+			item.createSpan({
+				cls: 'brain-context-graph-tooltip-text',
+				text: title,
+			});
+		});
+
+		this.positionTooltip(clientX, clientY);
+		this.tooltipEl.removeClass('is-hidden');
+	}
+
+	private positionTooltip(clientX: number, clientY: number): void {
+		if (!this.tooltipEl) return;
+		const rect = this.container.getBoundingClientRect?.() ?? {
+			left: 0,
+			top: 0,
+			width: 800,
+			height: 600,
+		};
+		const localX = clientX - rect.left;
+		const localY = clientY - rect.top;
+
+		if (this.tooltipEl.style) {
+			this.tooltipEl.style.left = `${localX + 14}px`;
+			this.tooltipEl.style.top = `${localY + 14}px`;
+		}
+	}
 
 	private onPointerUp = (): void => {
 		if (this.draggedNode) {
@@ -592,6 +704,31 @@ export class ContextGraphEngine {
 
 			const radius = (node.radius ?? 8) * (isHovered ? 1.3 : 1);
 
+			// Radiating ripple rings when in optimistic loading state
+			if (node.isSeed && this.optimisticLoading) {
+				const elapsed = Date.now() - this.optimisticStartTime;
+				const cycleDuration = 1200;
+				const maxRippleDist = 20;
+				const ripplePhases = [0, 0.5];
+
+				ctx.save?.();
+				ctx.strokeStyle = accentColor;
+				ctx.lineWidth = 1.5;
+
+				for (const phase of ripplePhases) {
+					const progress = ((elapsed + phase * cycleDuration) % cycleDuration) / cycleDuration;
+					const rippleRadius = radius + 2 + progress * maxRippleDist;
+					const rippleAlpha = (1 - progress) * 0.65;
+
+					ctx.beginPath?.();
+					ctx.arc?.(node.x, node.y, rippleRadius, 0, Math.PI * 2);
+					ctx.globalAlpha = rippleAlpha;
+					ctx.stroke?.();
+				}
+
+				ctx.restore?.();
+			}
+
 			// Circle fill
 			ctx.beginPath?.();
 			ctx.arc?.(node.x, node.y, radius, 0, Math.PI * 2);
@@ -632,6 +769,7 @@ export class ContextGraphEngine {
 			}
 			this.animFrameId = null;
 		}
+		this.stopLoadingGlow();
 		this.simulation.stop();
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = null;
@@ -644,5 +782,6 @@ export class ContextGraphEngine {
 		this.canvas.removeEventListener('dblclick', this.onDblClick);
 
 		this.canvas.remove?.();
+		this.tooltipEl?.remove?.();
 	}
 }

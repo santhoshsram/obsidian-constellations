@@ -3,17 +3,27 @@ import { ContextGraphModal } from '../../src/ui/graph/context-graph-modal';
 import { TFile, type MockElement } from '../mocks/obsidian';
 import type { App } from 'obsidian';
 import type ObsidianBrainPlugin from '../../src/main';
-import type { GraphData } from '../../src/search/graph';
+import type { GraphData, GraphNode } from '../../src/search/graph';
+import type { ContextGraphEngine } from '../../src/ui/graph/context-graph-engine';
+
+interface ModalInternalAccess {
+	engine: ContextGraphEngine;
+	handleNodeClick(node: GraphNode): void;
+}
 
 describe('ContextGraphModal', () => {
 	let modal: ContextGraphModal;
 	let mockPlugin: ObsidianBrainPlugin;
 	let mockOpenLinkText: ReturnType<typeof vi.fn>;
 	let mockGetGraphData: ReturnType<typeof vi.fn>;
+	let mockSetActiveLeaf: ReturnType<typeof vi.fn>;
+	let mockGetLeavesOfType: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
 		vi.useFakeTimers();
 		mockOpenLinkText = vi.fn().mockResolvedValue(undefined);
+		mockSetActiveLeaf = vi.fn();
+		mockGetLeavesOfType = vi.fn().mockReturnValue([]);
 
 		const sampleGraph: GraphData = {
 			seed: { type: 'note', path: 'Active.md' },
@@ -32,6 +42,8 @@ describe('ContextGraphModal', () => {
 			workspace: {
 				getActiveFile: vi.fn().mockReturnValue(activeFile),
 				openLinkText: mockOpenLinkText,
+				getLeavesOfType: mockGetLeavesOfType,
+				setActiveLeaf: mockSetActiveLeaf,
 			},
 		};
 
@@ -102,7 +114,15 @@ describe('ContextGraphModal', () => {
 		);
 	});
 
-	it('opens note when open button is clicked', async () => {
+	it('focuses existing tab if note is already open in a markdown leaf without closing modal', async () => {
+		const mockLeaf = {
+			view: {
+				file: { path: 'Active.md' },
+			},
+		};
+		mockGetLeavesOfType.mockReturnValue([mockLeaf]);
+		const closeSpy = vi.spyOn(modal, 'close');
+
 		modal.open();
 		await vi.runAllTimersAsync();
 
@@ -111,6 +131,73 @@ describe('ContextGraphModal', () => {
 		) as unknown as MockElement | null;
 		openBtn?.click();
 
+		expect(mockSetActiveLeaf).toHaveBeenCalledWith(mockLeaf, { focus: true });
+		expect(mockOpenLinkText).not.toHaveBeenCalled();
+		expect(closeSpy).not.toHaveBeenCalled();
+	});
+
+	it('opens note in a tab without closing modal when not already open in any leaf', async () => {
+		mockGetLeavesOfType.mockReturnValue([]);
+		const closeSpy = vi.spyOn(modal, 'close');
+
+		modal.open();
+		await vi.runAllTimersAsync();
+
+		const openBtn = modal.contentEl.querySelector(
+			'.brain-context-graph-open-btn',
+		) as unknown as MockElement | null;
+		openBtn?.click();
+		await Promise.resolve();
+
+		expect(mockSetActiveLeaf).not.toHaveBeenCalled();
 		expect(vi.mocked(mockOpenLinkText)).toHaveBeenCalledWith('Active.md', '', 'tab');
+		expect(closeSpy).not.toHaveBeenCalled();
+	});
+
+	it('optimistically focuses node and updates badge immediately on node click before reseed completes', async () => {
+		let resolveReseed: ((val: GraphData) => void) | undefined;
+		const pendingPromise = new Promise<GraphData>((resolve) => {
+			resolveReseed = resolve;
+		});
+		// Make getGraphData hang initially
+		mockGetGraphData.mockReturnValueOnce(
+			Promise.resolve({
+				seed: { type: 'note', path: 'Active.md' },
+				nodes: [
+					{ id: 'Active.md', label: 'Active', filePath: 'Active.md', isSeed: true, hop: 0, radius: 10 },
+					{ id: 'Related.md', label: 'Related', filePath: 'Related.md', isSeed: false, hop: 1, radius: 7 },
+				],
+				edges: [{ id: 'Active---Related', source: 'Active.md', target: 'Related.md', similarity: 0.88 }],
+			}),
+		).mockReturnValueOnce(pendingPromise);
+
+		modal.open();
+		await vi.runAllTimersAsync();
+
+		const modalInternal = modal as unknown as ModalInternalAccess;
+		const engine = modalInternal.engine;
+		const optimisticFocusSpy = vi.spyOn(engine, 'optimisticFocus');
+
+		// Click peripheral node
+		modalInternal.handleNodeClick({
+			id: 'Related.md',
+			label: 'Related',
+			filePath: 'Related.md',
+			isSeed: false,
+			hop: 1,
+		});
+
+		// Check immediate optimistic reaction
+		expect(optimisticFocusSpy).toHaveBeenCalledWith('Related.md', 'Related');
+		const centerTitle = modal.contentEl.querySelector('.brain-context-graph-center-title');
+		expect(centerTitle?.textContent).toBe('Related');
+
+		// Resolve background reseed
+		resolveReseed?.({
+			seed: { type: 'note', path: 'Related.md' },
+			nodes: [{ id: 'Related.md', label: 'Related', filePath: 'Related.md', isSeed: true, hop: 0, radius: 10 }],
+			edges: [],
+		});
+		await vi.runAllTimersAsync();
 	});
 });

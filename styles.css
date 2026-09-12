@@ -521,3 +521,60 @@
 	text-align: center;
 }
 
+/* Context Graph Sneak Peek Tooltip (Frosted Glass) */
+.brain-context-graph-tooltip {
+	position: absolute;
+	z-index: 30;
+	pointer-events: none;
+	background: var(--background-secondary-alt, rgba(30, 30, 30, 0.78));
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 8px 12px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+	font-size: 0.82em;
+	color: var(--text-normal);
+	max-width: 260px;
+	transition: opacity 0.12s ease;
+}
+
+.brain-context-graph-tooltip-header {
+	font-size: 0.72em;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--text-muted);
+	margin-bottom: 4px;
+}
+
+.brain-context-graph-tooltip-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.brain-context-graph-tooltip-item {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	font-size: 0.95em;
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+}
+
+.brain-context-graph-tooltip-number {
+	color: var(--text-muted);
+	font-size: 0.85em;
+	font-variant-numeric: tabular-nums;
+	flex-shrink: 0;
+}
+
+.brain-context-graph-tooltip-text {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+

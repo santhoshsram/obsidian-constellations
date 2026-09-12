@@ -116,8 +116,10 @@ export class ContextGraphModal extends Modal {
 	}
 
 	private handleNodeClick(node: GraphNode): void {
-		if (node.filePath) {
+		if (node.filePath && !node.isSeed) {
 			this.searchInput.value = '';
+			this.engine?.optimisticFocus(node.id, node.label);
+			this.setCenterBadge(node.label, node.filePath);
 			void this.reseed({ type: 'note', path: node.filePath });
 		}
 	}
@@ -193,12 +195,32 @@ export class ContextGraphModal extends Modal {
 	}
 
 	private async openNote(filePath: string): Promise<void> {
-		const inNewTab = this.plugin.settings.openInNewTab;
-		await this.app.workspace.openLinkText(
-			filePath,
-			'',
-			inNewTab ? 'tab' : false,
-		);
+		const leaves = this.app.workspace.getLeavesOfType('markdown');
+		const existingLeaf = leaves.find((leaf) => {
+			const view = leaf.view as { file?: { path: string } } | undefined;
+			return view?.file?.path === filePath;
+		});
+
+		if (existingLeaf) {
+			this.app.workspace.setActiveLeaf(existingLeaf, { focus: true });
+		} else {
+			const inNewTab = this.plugin.settings.openInNewTab;
+			await this.app.workspace.openLinkText(
+				filePath,
+				'',
+				inNewTab ? 'tab' : false,
+			);
+		}
+
+		if (this.openButtonEl) {
+			const origText = this.openButtonEl.textContent || 'Open note ↗';
+			this.openButtonEl.setText('Opened ✓');
+			window.setTimeout(() => {
+				if (this.openButtonEl && this.openButtonEl.textContent === 'Opened ✓') {
+					this.openButtonEl.setText(origText);
+				}
+			}, 1200);
+		}
 	}
 
 	onClose(): void {
