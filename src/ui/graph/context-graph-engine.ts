@@ -824,7 +824,18 @@ export class ContextGraphEngine {
 		const textMuted = styles?.getPropertyValue('--text-muted')?.trim() || '#8e8e8e';
 		const accentColor = styles?.getPropertyValue('--interactive-accent')?.trim() || '#7c3aed';
 		const borderColor = styles?.getPropertyValue('--background-modifier-border')?.trim() || '#363636';
-		const bgSecondary = styles?.getPropertyValue('--background-secondary')?.trim() || '#202020';
+		const bgPrimary = styles?.getPropertyValue('--background-primary')?.trim() || '#181818';
+
+		const containerStyle =
+			typeof window !== 'undefined' && typeof getComputedStyle === 'function' && this.canvas.parentElement
+				? getComputedStyle(this.canvas.parentElement)
+				: null;
+		const canvasBg =
+			containerStyle?.backgroundColor &&
+			containerStyle.backgroundColor !== 'transparent' &&
+			containerStyle.backgroundColor !== 'rgba(0, 0, 0, 0)'
+				? containerStyle.backgroundColor
+				: bgPrimary;
 
 		const hovered = this.hoveredNode;
 		const connectedNodeIds = new Set<string>();
@@ -889,15 +900,15 @@ export class ContextGraphEngine {
 				if (isHoveredEdge) {
 					// Soft translucent accent when active cluster is hovered
 					strokeStyle = accentColor;
-					alpha = 0.55;
+					alpha = 0.50;
 				} else if (hovered) {
-					// Other secondary links slightly recede
-					strokeStyle = borderColor;
-					alpha = 0.12;
+					// Other secondary links recede into the background
+					strokeStyle = textMuted;
+					alpha = 0.05;
 				} else {
-					// Elevated ambient wallpaper at rest (distinctly visible)
-					strokeStyle = borderColor;
-					alpha = 0.38;
+					// Whisper-soft constellation hairline at rest (delicate ambient wallpaper)
+					strokeStyle = textMuted;
+					alpha = 0.16;
 				}
 			} else {
 				// Primary seed links: dynamic thickness strictly based on score
@@ -968,8 +979,8 @@ export class ContextGraphEngine {
 
 			// Node Opacity & Fill/Stroke styling
 			let nodeAlpha = 1.0;
-			let fillStyle = bgSecondary;
-			let strokeStyle = borderColor;
+			let fillStyle = canvasBg;
+			let strokeStyle = textMuted;
 			let strokeWidth = 1.5;
 
 			if (node.isSeed) {
@@ -981,36 +992,36 @@ export class ContextGraphEngine {
 			} else if (isHop2) {
 				// 2-Hop Ambient Satellites
 				if (isHovered || isConnected) {
-					nodeAlpha = 0.90;
-					fillStyle = isHovered ? accentColor : bgSecondary;
+					nodeAlpha = 0.95;
+					fillStyle = isHovered ? accentColor : canvasBg;
 					strokeStyle = accentColor;
-					strokeWidth = isHovered ? 2.0 : 1.4;
+					strokeWidth = isHovered ? 2.0 : 1.3;
 				} else if (hovered) {
-					nodeAlpha = 0.22;
-					fillStyle = bgSecondary;
-					strokeStyle = borderColor;
-					strokeWidth = 1.0;
+					nodeAlpha = 0.12;
+					fillStyle = canvasBg;
+					strokeStyle = textMuted;
+					strokeWidth = 0.8;
 				} else {
-					nodeAlpha = 0.55;
-					fillStyle = bgSecondary;
-					strokeStyle = borderColor;
-					strokeWidth = 1.2;
+					nodeAlpha = 0.40;
+					fillStyle = canvasBg;
+					strokeStyle = textMuted;
+					strokeWidth = 1.0;
 				}
 			} else {
 				// 1-Hop Major Constellation Stars
 				if (isHovered || isConnected) {
 					nodeAlpha = 1.0;
-					fillStyle = isHovered ? accentColor : bgSecondary;
+					fillStyle = isHovered ? accentColor : canvasBg;
 					strokeStyle = accentColor;
 					strokeWidth = isHovered ? 2.5 : 2.0;
 				} else if (hovered) {
 					nodeAlpha = 0.90;
-					fillStyle = bgSecondary;
+					fillStyle = canvasBg;
 					strokeStyle = borderColor;
 					strokeWidth = 1.5;
 				} else {
 					nodeAlpha = 1.0;
-					fillStyle = bgSecondary;
+					fillStyle = canvasBg;
 					strokeStyle = accentColor;
 					strokeWidth = 1.8;
 				}
@@ -1067,9 +1078,9 @@ export class ContextGraphEngine {
 				const textFill = node.isSeed ? accentColor : isHop2 ? textMuted : (isHovered ? accentColor : textNormal);
 				const textAlpha = isHop2 ? 0.85 : (!hovered || isHovered ? 0.95 : 0.90);
 
-				// Dark text halo behind every label to prevent letters being sliced by lines/dots
+				// Canvas text halo behind every label to prevent letters being sliced by lines/dots
 				ctx.save?.();
-				ctx.strokeStyle = bgSecondary;
+				ctx.strokeStyle = canvasBg;
 				ctx.lineWidth = 3.5 / Math.sqrt(this.zoom);
 				ctx.lineJoin = 'round';
 				ctx.globalAlpha = textAlpha * 0.9;
