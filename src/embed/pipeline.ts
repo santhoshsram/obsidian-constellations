@@ -126,8 +126,8 @@ async function loadTransformers(): Promise<typeof import('@huggingface/transform
 
 export async function createEmbeddingPipeline(
 	model: EmbeddingModelSpec,
-	onProgress?: (progress: PipelineProgress) => void,
-	logger?: Logger,
+	onProgress: ((progress: PipelineProgress) => void) | undefined,
+	logger: Logger,
 ): Promise<{ pipe: EmbeddingPipelineFn; device: DeviceMode }> {
 	const transformers = await loadTransformers();
 	const { pipeline } = transformers;
@@ -135,11 +135,7 @@ export async function createEmbeddingPipeline(
 	// Report WebGPU availability so we know whether WASM is a fallback or
 	// the only option (WASM single-thread is slow).
 	const gpuStatus = await probeWebgpu();
-	if (logger) {
-		logger.debug(`embedding model webgpu probe=${gpuStatus}`);
-	} else {
-		console.debug(`${pluginName()}: embedding model webgpu probe=${gpuStatus}`);
-	}
+	logger.debug(`embedding model webgpu probe=${gpuStatus}`);
 
 	const fallbacks = buildFallbackChain(model, gpuStatus === 'usable');
 	let lastError: unknown;
@@ -150,24 +146,10 @@ export async function createEmbeddingPipeline(
 				progress_callback: onProgress,
 			});
 			const device: DeviceMode = cfg.device === 'webgpu' ? 'webgpu' : 'wasm';
-			if (logger) {
-				logger.debug(`embedding model using device=${device}`);
-			} else {
-				console.debug(`${pluginName()}: embedding model using device=${device}`);
-			}
+			logger.debug(`embedding model using device=${device}`);
 			return { pipe, device };
 		} catch (e) {
-			if (logger) {
-				logger.warn(
-					`pipeline failed with config ${JSON.stringify(cfg)}`,
-					e,
-				);
-			} else {
-				console.warn(
-					`${pluginName()}: pipeline failed with config ${JSON.stringify(cfg)}`,
-					e,
-				);
-			}
+			logger.warn(`pipeline failed with config ${JSON.stringify(cfg)}`, e);
 			lastError = e;
 		}
 	}
@@ -176,18 +158,14 @@ export async function createEmbeddingPipeline(
 
 export async function createRerankerPipeline(
 	model: RerankerModelSpec,
-	onProgress?: (progress: PipelineProgress) => void,
-	logger?: Logger,
+	onProgress: ((progress: PipelineProgress) => void) | undefined,
+	logger: Logger,
 ): Promise<{ rerankPairs: RerankPairsFn; device: DeviceMode }> {
 	const transformers = await loadTransformers();
 	const { AutoTokenizer, AutoModelForSequenceClassification } = transformers;
 
 	const gpuStatus = await probeWebgpu();
-	if (logger) {
-		logger.debug(`reranker webgpu probe=${gpuStatus}`);
-	} else {
-		console.debug(`${pluginName()}: reranker webgpu probe=${gpuStatus}`);
-	}
+	logger.debug(`reranker webgpu probe=${gpuStatus}`);
 
 	const tokenizer = await AutoTokenizer.from_pretrained(model.modelId, {
 		progress_callback: onProgress,
@@ -211,11 +189,7 @@ export async function createRerankerPipeline(
 				},
 			);
 			const device: DeviceMode = cfg.device === 'webgpu' ? 'webgpu' : 'wasm';
-			if (logger) {
-				logger.debug(`reranker using device=${device}`);
-			} else {
-				console.debug(`${pluginName()}: reranker using device=${device}`);
-			}
+			logger.debug(`reranker using device=${device}`);
 
 			const rerankPairs: RerankPairsFn = async (
 				pairs: TextPair[],
@@ -238,11 +212,7 @@ export async function createRerankerPipeline(
 					const outputs = (await (classifier as (inp: unknown) => Promise<{ logits?: { data: ArrayLike<number> } }>)(inputs));
 					const inferMs = performance.now() - tInferStart;
 
-					if (logger) {
-						logger.debug('reranker outputs keys:', outputs ? Object.keys(outputs) : null);
-					} else {
-						console.debug(`${pluginName()}: reranker outputs keys:`, outputs ? Object.keys(outputs) : null);
-					}
+					logger.debug('reranker outputs keys:', outputs ? Object.keys(outputs) : null);
 
 					onTiming?.({ tokenizeMs, inferMs });
 
@@ -255,28 +225,14 @@ export async function createRerankerPipeline(
 					}
 					return scores;
 				} catch (err) {
-					if (logger) {
-						logger.error('rerankPairs execution failed', err);
-					} else {
-						console.error(`${pluginName()}: rerankPairs execution failed`, err);
-					}
+					logger.error('rerankPairs execution failed', err);
 					throw err;
 				}
 			};
 
 			return { rerankPairs, device };
 		} catch (e) {
-			if (logger) {
-				logger.warn(
-					`reranker pipeline failed with config ${JSON.stringify(cfg)}`,
-					e,
-				);
-			} else {
-				console.warn(
-					`${pluginName()}: reranker pipeline failed with config ${JSON.stringify(cfg)}`,
-					e,
-				);
-			}
+			logger.warn(`reranker pipeline failed with config ${JSON.stringify(cfg)}`, e);
 			lastError = e;
 		}
 	}
