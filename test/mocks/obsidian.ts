@@ -2,6 +2,42 @@ if (typeof (globalThis as unknown as { window?: unknown }).window === 'undefined
 	(globalThis as unknown as { window: unknown }).window = globalThis;
 }
 
+// Vitest runs in plain Node, which lacks browser globals that Obsidian's
+// Electron renderer always provides. Production code assumes they exist
+// (no feature-detection guards); these globals stand in for the test run.
+type G = typeof globalThis & {
+	requestAnimationFrame?: (cb: FrameRequestCallback) => number;
+	cancelAnimationFrame?: (handle: number) => void;
+	ResizeObserver?: typeof ResizeObserver;
+};
+const g = globalThis as G;
+
+if (typeof g.requestAnimationFrame !== 'function') {
+	g.requestAnimationFrame = (cb: FrameRequestCallback): number =>
+		setTimeout(() => cb(Date.now()), 0) as unknown as number;
+}
+if (typeof g.cancelAnimationFrame !== 'function') {
+	g.cancelAnimationFrame = (handle: number): void => clearTimeout(handle);
+}
+if (typeof g.ResizeObserver !== 'function') {
+	g.ResizeObserver = class MockResizeObserver {
+		observe(): void {}
+		unobserve(): void {}
+		disconnect(): void {}
+	} as unknown as typeof ResizeObserver;
+}
+if (typeof g.getComputedStyle !== 'function') {
+	g.getComputedStyle = (() => ({
+		getPropertyValue: () => '',
+		backgroundColor: '',
+	})) as unknown as typeof getComputedStyle;
+}
+type GDoc = typeof globalThis & { document?: unknown };
+const gDoc = globalThis as GDoc;
+if (typeof gDoc.document === 'undefined') {
+	gDoc.document = { body: {} } as unknown as Document;
+}
+
 export class MockElement {
 	tagName: string;
 	className: string = '';
@@ -57,6 +93,7 @@ export class MockElement {
 				moveTo: () => {},
 				lineTo: () => {},
 				fillText: () => {},
+				strokeText: () => {},
 				measureText: (text: string) => ({ width: text.length * 7 }),
 				createRadialGradient: () => ({ addColorStop: () => {} }),
 				fillStyle: '',
