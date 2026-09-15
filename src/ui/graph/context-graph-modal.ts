@@ -6,16 +6,14 @@
  */
 
 import { Modal, type App, setIcon } from 'obsidian';
-import type ObsidianBrainPlugin from '../../main';
+import type ConstellationsPlugin from '../../main';
 import { ContextGraphEngine } from './context-graph-engine';
 import type { GraphData, GraphNode, GraphSeed } from '../../search/graph';
 import { debounce, type DebouncedFn } from '../../utils/debounce';
 
 export class ContextGraphModal extends Modal {
 	private engine: ContextGraphEngine | null = null;
-	private currentSeed: GraphSeed | null = null;
 	private currentCenterPath: string | null = null;
-	private currentCenterLabel = '';
 
 	private searchWrapper!: HTMLElement;
 	private searchInput!: HTMLInputElement;
@@ -26,10 +24,11 @@ export class ContextGraphModal extends Modal {
 
 	private debouncedSearch: DebouncedFn<[string]>;
 	private currentSearchRequestId = 0;
+	private openNoteResetTimeoutId: number | null = null;
 
 	constructor(
 		app: App,
-		private plugin: ObsidianBrainPlugin,
+		private plugin: ConstellationsPlugin,
 	) {
 		super(app);
 		this.debouncedSearch = debounce((query: string) => {
@@ -38,27 +37,27 @@ export class ContextGraphModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.modalEl.addClass('brain-context-graph-modal');
+		this.modalEl.addClass('constellations-context-graph-modal');
 
 		const { contentEl } = this;
 		contentEl.empty();
 
 		// 1. Top floating overlay header
 		const headerEl = contentEl.createDiv({
-			cls: 'brain-context-graph-header',
+			cls: 'constellations-context-graph-header',
 		});
 
 		// Left: Search input
 		this.searchWrapper = headerEl.createDiv({
-			cls: 'brain-context-graph-search-container',
+			cls: 'constellations-context-graph-search-container',
 		});
 		const searchIconEl = this.searchWrapper.createSpan({
-			cls: 'brain-context-graph-search-icon',
+			cls: 'constellations-context-graph-search-icon',
 		});
 		setIcon(searchIconEl, 'search');
 
 		this.searchInput = this.searchWrapper.createEl('input', {
-			cls: 'brain-context-graph-search-input',
+			cls: 'constellations-context-graph-search-input',
 			attr: {
 				type: 'text',
 				placeholder: 'Search…',
@@ -66,7 +65,7 @@ export class ContextGraphModal extends Modal {
 		});
 
 		this.searchClearBtn = this.searchWrapper.createSpan({
-			cls: 'brain-context-graph-search-clear is-hidden',
+			cls: 'constellations-context-graph-search-clear is-hidden',
 		});
 		setIcon(this.searchClearBtn, 'x');
 		this.searchClearBtn.addEventListener('click', () => {
@@ -109,14 +108,14 @@ export class ContextGraphModal extends Modal {
 
 		// Right: Active node badge + Open note button
 		const centerWrapper = headerEl.createDiv({
-			cls: 'brain-context-graph-center-container',
+			cls: 'constellations-context-graph-center-container',
 		});
 		this.centerTitleEl = centerWrapper.createSpan({
-			cls: 'brain-context-graph-center-title',
+			cls: 'constellations-context-graph-center-title',
 			text: 'Constellation Graph',
 		});
 		this.openButtonEl = centerWrapper.createEl('button', {
-			cls: 'brain-context-graph-open-btn',
+			cls: 'constellations-context-graph-open-btn',
 			text: 'Open note ↗',
 		});
 		this.openButtonEl.addEventListener('click', () => {
@@ -127,11 +126,11 @@ export class ContextGraphModal extends Modal {
 
 		// 2. Canvas Container
 		const canvasContainer = contentEl.createDiv({
-			cls: 'brain-context-graph-canvas-container',
+			cls: 'constellations-context-graph-canvas-container',
 		});
 
 		this.emptyStateEl = contentEl.createDiv({
-			cls: 'brain-context-graph-empty is-hidden',
+			cls: 'constellations-context-graph-empty is-hidden',
 		});
 
 		// 3. Mount engine
@@ -207,7 +206,6 @@ export class ContextGraphModal extends Modal {
 	}
 
 	private async reseed(seed: GraphSeed, requestId?: number): Promise<void> {
-		this.currentSeed = seed;
 		const brain = this.plugin.brain;
 		if (!brain.isReady) {
 			this.showEmptyState('Brain index is loading…');
@@ -240,7 +238,6 @@ export class ContextGraphModal extends Modal {
 	}
 
 	private setCenterBadge(label: string, filePath: string | null): void {
-		this.currentCenterLabel = label;
 		this.currentCenterPath = filePath;
 		this.centerTitleEl.setText(label);
 		if (filePath) {
@@ -280,7 +277,11 @@ export class ContextGraphModal extends Modal {
 		if (this.openButtonEl) {
 			const origText = this.openButtonEl.textContent || 'Open note ↗';
 			this.openButtonEl.setText('Opened ✓');
-			window.setTimeout(() => {
+			if (this.openNoteResetTimeoutId !== null) {
+				window.clearTimeout(this.openNoteResetTimeoutId);
+			}
+			this.openNoteResetTimeoutId = window.setTimeout(() => {
+				this.openNoteResetTimeoutId = null;
 				if (this.openButtonEl && this.openButtonEl.textContent === 'Opened ✓') {
 					this.openButtonEl.setText(origText);
 				}
@@ -289,6 +290,10 @@ export class ContextGraphModal extends Modal {
 	}
 
 	onClose(): void {
+		if (this.openNoteResetTimeoutId !== null) {
+			window.clearTimeout(this.openNoteResetTimeoutId);
+			this.openNoteResetTimeoutId = null;
+		}
 		this.debouncedSearch.cancel();
 		this.engine?.destroy();
 		this.engine = null;

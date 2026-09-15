@@ -198,7 +198,7 @@ describe('ContextGraphEngine', () => {
 
 	describe('Sneak Peek Tooltip', () => {
 		it('creates tooltip element inside container with is-hidden class', () => {
-			const tooltip = container.querySelector('.brain-context-graph-tooltip');
+			const tooltip = container.querySelector('.constellations-context-graph-tooltip');
 			expect(tooltip).toBeDefined();
 			expect(tooltip?.className).toContain('is-hidden');
 		});
@@ -236,7 +236,7 @@ describe('ContextGraphEngine', () => {
 			}
 
 			// Default behavior: tooltip stays hidden so canvas remains clean
-			const tooltip = container.querySelector('.brain-context-graph-tooltip');
+			const tooltip = container.querySelector('.constellations-context-graph-tooltip');
 			expect(tooltip?.className).toContain('is-hidden');
 		});
 
@@ -278,13 +278,13 @@ describe('ContextGraphEngine', () => {
 				fn({ clientX: 250, clientY: 250 });
 			}
 
-			const tooltip = tooltipContainer.querySelector('.brain-context-graph-tooltip');
+			const tooltip = tooltipContainer.querySelector('.constellations-context-graph-tooltip');
 			expect(tooltip?.className).not.toContain('is-hidden');
 			expect(tooltip?.textContent).toContain('Related 1');
 			expect(tooltip?.textContent).toContain('Related 5');
 
 			// Numbered list items
-			const numbers = tooltip?.querySelectorAll('.brain-context-graph-tooltip-number');
+			const numbers = tooltip?.querySelectorAll('.constellations-context-graph-tooltip-number');
 			expect(numbers?.length).toBe(5);
 			expect(numbers?.[0]?.textContent).toBe('1.');
 			expect(numbers?.[4]?.textContent).toBe('5.');

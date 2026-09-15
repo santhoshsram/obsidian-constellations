@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Brain } from '../../src/brain';
-import type ObsidianBrainPlugin from '../../src/main';
+import type ConstellationsPlugin from '../../src/main';
 import { ChunkIndex } from '../../src/index/chunk-index';
 import { BruteForceVectorStore } from '../../src/index/vector-store';
 import type { NewChunk } from '../../src/index/chunk-index';
@@ -41,7 +41,7 @@ describe('Brain.relatedTo with reranker', () => {
 
 	async function setupBrain(
 		rerankerEnabled = true,
-		extraSettings: Partial<ObsidianBrainPlugin['settings']> = {},
+		extraSettings: Partial<ConstellationsPlugin['settings']> = {},
 	): Promise<Brain> {
 		const store = new BruteForceVectorStore(2);
 		const index = new ChunkIndex(store);
@@ -77,7 +77,7 @@ describe('Brain.relatedTo with reranker', () => {
 					on: vi.fn(),
 				},
 			},
-			manifest: { id: 'obsidian-brain' },
+			manifest: { id: 'constellations' },
 			settings: {
 				embeddingModel: 'test-model',
 				rerankerModel: 'cross-encoder/ettin-reranker-150m-v1',
@@ -93,7 +93,7 @@ describe('Brain.relatedTo with reranker', () => {
 			setStatus: vi.fn(),
 			saveSettings: vi.fn(),
 			registerEvent: vi.fn(),
-		} as unknown as ObsidianBrainPlugin;
+		} as unknown as ConstellationsPlugin;
 
 		const brain = new Brain(fakePlugin);
 		Object.assign(brain, { index, ready: true });

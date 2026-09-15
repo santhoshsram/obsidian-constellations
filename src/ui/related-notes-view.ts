@@ -5,7 +5,7 @@ import {
 	TFile,
 	type WorkspaceLeaf,
 } from 'obsidian';
-import type ObsidianBrainPlugin from '../main';
+import type ConstellationsPlugin from '../main';
 import type { BrainProgress } from '../brain';
 import type { RelatedNote } from '../search/related';
 import { getSectionDisplay } from './snippet';
@@ -16,7 +16,7 @@ import type { GraphData } from '../search/graph';
 export const VIEW_TYPE_RELATED = 'brain-related-notes';
 
 export class RelatedNotesView extends ItemView {
-	private plugin: ObsidianBrainPlugin;
+	private plugin: ConstellationsPlugin;
 	private unsubscribeProgress?: () => void;
 	private debouncedRefresh: DebouncedFn<[]>;
 	private wasIndexing = false;
@@ -29,7 +29,7 @@ export class RelatedNotesView extends ItemView {
 	private bodyEl: HTMLElement | null = null;
 	private currentRequestId = 0;
 
-	constructor(leaf: WorkspaceLeaf, plugin: ObsidianBrainPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: ConstellationsPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 		this.mode = this.plugin.settings.sidebarViewMode ?? 'list';
@@ -52,7 +52,7 @@ export class RelatedNotesView extends ItemView {
 
 	onload(): void {
 		super.onload();
-		this.contentEl.addClass('brain-related-view-content');
+		this.contentEl.addClass('constellations-related-view-content');
 		this.unsubscribeProgress = this.plugin.brain.onProgress(
 			(progress: BrainProgress) => {
 				const isNowIndexing = progress.isIndexing;
@@ -88,51 +88,45 @@ export class RelatedNotesView extends ItemView {
 	private ensureLayout(): void {
 		const isAttached =
 			Boolean(this.headerEl && this.bodyEl) &&
-			(typeof this.contentEl.contains === 'function'
-				? this.contentEl.contains(this.headerEl) && this.contentEl.contains(this.bodyEl)
-				: true);
+			this.contentEl.contains(this.headerEl) &&
+			this.contentEl.contains(this.bodyEl);
 
 		if (!isAttached) {
 			this.contentEl.empty();
 			this.headerEl = this.contentEl.createDiv({
-				cls: 'brain-view-header',
+				cls: 'constellations-view-header',
 			});
 			const toggleGroup = this.headerEl.createDiv({
-				cls: 'brain-view-toggle-group',
+				cls: 'constellations-view-toggle-group',
 			});
 			this.listBtn = toggleGroup.createEl('button', {
-				cls: `brain-view-toggle ${this.mode === 'list' ? 'is-active' : ''}`,
+				cls: `constellations-view-toggle ${this.mode === 'list' ? 'is-active' : ''}`,
 				text: 'List',
 			});
 			this.graphBtn = toggleGroup.createEl('button', {
-				cls: `brain-view-toggle ${this.mode === 'graph' ? 'is-active' : ''}`,
+				cls: `constellations-view-toggle ${this.mode === 'graph' ? 'is-active' : ''}`,
 				text: 'Graph',
 			});
 
-			this.listBtn.addEventListener('click', () => {
+			this.registerDomEvent(this.listBtn, 'click', () => {
 				if (this.mode !== 'list') {
 					void this.setMode('list');
 				}
 			});
 
-			this.graphBtn.addEventListener('click', () => {
+			this.registerDomEvent(this.graphBtn, 'click', () => {
 				if (this.mode !== 'graph') {
 					void this.setMode('graph');
 				}
 			});
 
 			this.bodyEl = this.contentEl.createDiv({
-				cls: 'brain-view-body',
+				cls: 'constellations-view-body',
 			});
 		} else {
 			this.listBtn?.toggleClass('is-active', this.mode === 'list');
 			this.graphBtn?.toggleClass('is-active', this.mode === 'graph');
 		}
-	}
-
-	private renderHeader(): HTMLElement {
-		this.ensureLayout();
-		return this.headerEl!;
 	}
 
 	async setMode(mode: 'list' | 'graph'): Promise<void> {
@@ -164,16 +158,16 @@ export class RelatedNotesView extends ItemView {
 		this.cleanupGraph();
 		this.bodyEl!.empty();
 		const container = this.bodyEl!.createDiv({
-			cls: 'brain-empty-state-container',
+			cls: 'constellations-empty-state-container',
 		});
 		const loadingBox = container.createDiv({
-			cls: 'brain-loading-state',
+			cls: 'constellations-loading-state',
 		});
 		loadingBox.createDiv({
-			cls: 'brain-loading-spinner',
+			cls: 'constellations-loading-spinner',
 		});
 		loadingBox.createDiv({
-			cls: 'brain-loading-text',
+			cls: 'constellations-loading-text',
 			text: message,
 		});
 	}
@@ -183,10 +177,10 @@ export class RelatedNotesView extends ItemView {
 		this.cleanupGraph();
 		this.bodyEl!.empty();
 		const container = this.bodyEl!.createDiv({
-			cls: 'brain-empty-state-container',
+			cls: 'constellations-empty-state-container',
 		});
 		container.createDiv({
-			cls: 'brain-empty-state',
+			cls: 'constellations-empty-state',
 			text: message,
 		});
 	}
@@ -245,7 +239,7 @@ export class RelatedNotesView extends ItemView {
 		}
 
 		if (this.mode === 'graph') {
-			if (!this.bodyEl?.querySelector('.brain-loading-state')) {
+			if (!this.bodyEl?.querySelector('.constellations-loading-state')) {
 				this.renderLoading('Loading constellation…');
 			}
 			const graphData = await brain.getGraphData({
@@ -261,7 +255,7 @@ export class RelatedNotesView extends ItemView {
 			return;
 		}
 
-		if (!this.bodyEl?.querySelector('.brain-loading-state')) {
+		if (!this.bodyEl?.querySelector('.constellations-loading-state')) {
 			this.renderLoading('Finding related notes…');
 		}
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -292,7 +286,7 @@ export class RelatedNotesView extends ItemView {
 		this.cleanupGraph();
 		this.bodyEl!.empty();
 		const graphContainer = this.bodyEl!.createDiv({
-			cls: 'brain-context-graph-sidebar-container',
+			cls: 'constellations-context-graph-sidebar-container',
 		});
 
 		this.graphEngine = new ContextGraphEngine(graphContainer, {
@@ -318,7 +312,7 @@ export class RelatedNotesView extends ItemView {
 		this.cleanupGraph();
 		this.bodyEl!.empty();
 		const listEl = this.bodyEl!.createDiv({
-			cls: 'brain-related-notes',
+			cls: 'constellations-related-notes',
 		});
 
 		const maxNotes = this.plugin.settings.maxRelatedNotes ?? 10;
@@ -326,51 +320,51 @@ export class RelatedNotesView extends ItemView {
 
 		for (const note of related.slice(0, maxNotes)) {
 			const cardEl = listEl.createDiv({
-				cls: 'brain-related-note-card',
+				cls: 'constellations-related-note-card',
 			});
 
 			const headerEl = cardEl.createDiv({
-				cls: 'brain-related-note-header',
+				cls: 'constellations-related-note-header',
 			});
 			const iconEl = headerEl.createSpan({
-				cls: 'brain-related-note-icon',
+				cls: 'constellations-related-note-icon',
 			});
 			setIcon(iconEl, 'file-text');
 
 			const noteTitle = this.getNoteTitle(note.filePath);
 			headerEl.createSpan({
-				cls: 'brain-related-note-title',
+				cls: 'constellations-related-note-title',
 				text: noteTitle,
 			});
 
 			const firstChunkLine = note.chunks?.[0]?.record?.startLine;
-			headerEl.addEventListener('click', () => {
+			this.registerDomEvent(headerEl, 'click', () => {
 				void this.navigateTo(note.filePath, firstChunkLine);
 			});
 
 			const sectionsEl = cardEl.createDiv({
-				cls: 'brain-related-note-sections',
+				cls: 'constellations-related-note-sections',
 			});
 
 			const chunks = (note.chunks ?? []).slice(0, maxChunks);
 			for (const chunk of chunks) {
 				const sectionItemEl = sectionsEl.createDiv({
-					cls: 'brain-related-section-item',
+					cls: 'constellations-related-section-item',
 				});
 
 				sectionItemEl.createSpan({
-					cls: 'brain-related-section-bullet',
+					cls: 'constellations-related-section-bullet',
 					text: '•',
 				});
 
 				const { label } = getSectionDisplay(chunk.record);
 				sectionItemEl.createSpan({
-					cls: 'brain-related-section-text',
+					cls: 'constellations-related-section-text',
 					text: label,
 				});
 
 				const chunkLine = chunk.record?.startLine;
-				sectionItemEl.addEventListener('click', () => {
+				this.registerDomEvent(sectionItemEl, 'click', () => {
 					void this.navigateTo(note.filePath, chunkLine);
 				});
 			}

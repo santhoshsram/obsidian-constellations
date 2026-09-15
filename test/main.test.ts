@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import ObsidianBrainPlugin from '../src/main';
+import ConstellationsPlugin from '../src/main';
 import { pluginName } from '../src/plugin-name';
 import { VIEW_TYPE_RELATED } from '../src/ui/related-notes-view';
 import type { App, Command, PluginManifest, WorkspaceLeaf } from 'obsidian';
@@ -11,8 +11,8 @@ interface MockWorkspace {
 	revealLeaf: ReturnType<typeof vi.fn>;
 }
 
-describe('ObsidianBrainPlugin', () => {
-	let plugin: ObsidianBrainPlugin;
+describe('ConstellationsPlugin', () => {
+	let plugin: ConstellationsPlugin;
 	let registeredCommands: Command[];
 	let registeredViews: Record<string, unknown>;
 	let mockWorkspace: MockWorkspace;
@@ -36,7 +36,7 @@ describe('ObsidianBrainPlugin', () => {
 		} as unknown as App;
 
 		const mockManifest: PluginManifest = {
-			id: 'obsidian-brain',
+			id: 'constellations',
 			name: 'Test Brain Plugin',
 			version: '0.1.0',
 			minAppVersion: '1.7.2',
@@ -44,7 +44,7 @@ describe('ObsidianBrainPlugin', () => {
 			author: '',
 		};
 
-		plugin = new ObsidianBrainPlugin(mockApp, mockManifest);
+		plugin = new ConstellationsPlugin(mockApp, mockManifest);
 		plugin.addCommand = vi.fn((cmd: Command) => {
 			registeredCommands.push(cmd);
 			return cmd;

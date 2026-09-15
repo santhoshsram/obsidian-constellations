@@ -302,6 +302,9 @@ export class ItemView {
 	onload(): void {}
 	onunload(): void {}
 	registerEvent(_eventRef: any): void {}
+	registerDomEvent(el: MockElement, type: string, callback: (e?: any) => void): void {
+		el.addEventListener(type, callback);
+	}
 	async onOpen(): Promise<void> {}
 	async onClose(): Promise<void> {}
 }

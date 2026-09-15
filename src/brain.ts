@@ -5,7 +5,7 @@
  */
 
 import { Notice } from 'obsidian';
-import type ObsidianBrainPlugin from './main';
+import type ConstellationsPlugin from './main';
 import { ChunkIndex } from './index/chunk-index';
 import { BruteForceVectorStore } from './index/vector-store';
 import { IndexingService } from './index/indexing-service';
@@ -71,7 +71,7 @@ export class Brain {
 	private reranker: Reranker | null = null;
 	private storage: ObsidianIndexStorage | null = null;
 	private ready = false;
-	private logger = new ConsoleLogger('obsidian-brain', {
+	private logger = new ConsoleLogger(pluginName(), {
 		enabled: this.plugin.settings?.debugLogging ?? false,
 	});
 	private logFile: BufferedLogFile | null = null;
@@ -88,7 +88,7 @@ export class Brain {
 	};
 	private onProgressListeners: Array<(progress: BrainProgress) => void> = [];
 
-	constructor(private plugin: ObsidianBrainPlugin) {}
+	constructor(private plugin: ConstellationsPlugin) {}
 
 	setEmbeddingStatus(status: ModelStatus): void {
 		this.embeddingStatus = status;
@@ -152,7 +152,7 @@ export class Brain {
 			const rerankerModel = this.currentRerankerModel();
 			this.logger.info(`creating reranker pipeline for model ${rerankerModel.modelId}`);
 			this.setRerankerStatus({ state: 'loading' });
-			this.plugin.setStatus('Brain: loading reranking model…');
+			this.plugin.setStatus(`${pluginName()}: loading reranking model…`);
 			const isCached = await isModelCached(rerankerModel.modelId);
 			const createdReranker = await createRerankerPipeline(
 				rerankerModel,
@@ -170,7 +170,7 @@ export class Brain {
 						isWeightsFile
 					) {
 						const pct = Math.round(p.progress);
-						this.plugin.setStatus(`Brain: downloading reranking model ${pct}%`);
+						this.plugin.setStatus(`${pluginName()}: downloading reranking model ${pct}%`);
 						this.setRerankerStatus({ state: 'downloading', progress: pct });
 					} else if (p.status === 'done' && isWeightsFile) {
 						this.setRerankerStatus({ state: 'loading' });
@@ -267,7 +267,7 @@ export class Brain {
 		try {
 			this.logger.info(`creating pipeline for model ${model.modelId}`);
 			this.setEmbeddingStatus({ state: 'loading' });
-			this.plugin.setStatus('Brain: loading embedding model…');
+			this.plugin.setStatus(`${pluginName()}: loading embedding model…`);
 			const isCached = await isModelCached(model.modelId);
 			const created = await createEmbeddingPipeline(
 				model,
@@ -285,7 +285,7 @@ export class Brain {
 						isWeightsFile
 					) {
 						const pct = Math.round(p.progress);
-						this.plugin.setStatus(`Brain: downloading embedding model ${pct}%`);
+						this.plugin.setStatus(`${pluginName()}: downloading embedding model ${pct}%`);
 						this.setEmbeddingStatus({ state: 'downloading', progress: pct });
 					} else if (p.status === 'done' && isWeightsFile) {
 						this.setEmbeddingStatus({ state: 'loading' });
@@ -299,7 +299,7 @@ export class Brain {
 			return new TransformersEmbedder(created.pipe, model);
 		} catch (e) {
 			this.setEmbeddingStatus({ state: 'error', error: String(e) });
-			this.plugin.setStatus('Brain: model failed to load');
+			this.plugin.setStatus(`${pluginName()}: model failed to load`);
 			new Notice(
 				`${pluginName()}: embedding model failed to load. Check the console (Cmd-Option-I) for details.`,
 				0,
@@ -353,7 +353,7 @@ export class Brain {
 				isIndexing: false,
 				currentFile: 'Indexing failed',
 			});
-			this.plugin.setStatus('Brain: indexing failed');
+			this.plugin.setStatus(`${pluginName()}: indexing failed`);
 			new Notice(
 				`${pluginName()}: indexing failed. Check the console (Cmd-Option-I) for details.`,
 				0,
@@ -419,7 +419,7 @@ export class Brain {
 				isIndexing: false,
 				currentFile: 'Reindexing failed',
 			});
-			this.plugin.setStatus('Brain: reindexing failed');
+			this.plugin.setStatus(`${pluginName()}: reindexing failed`);
 			this.logger.error('reindex failed', e);
 		}
 	}
@@ -443,7 +443,7 @@ export class Brain {
 		if (!this.service) {
 			throw new Error('performVaultSync called before service was initialized');
 		}
-		this.plugin.setStatus('Brain: checking for changes…');
+		this.plugin.setStatus(`${pluginName()}: checking for changes…`);
 		this.updateProgress({
 			isIndexing: true,
 			done: 0,
@@ -451,7 +451,7 @@ export class Brain {
 			currentFile: 'Checking vault for changes…',
 		});
 		const result = await this.service.syncVault(vault, (done, total, path) => {
-			this.plugin.setStatus(`Brain: indexing (${done}/${total})…`);
+			this.plugin.setStatus(`${pluginName()}: indexing (${done}/${total})…`);
 			this.updateProgress({
 				isIndexing: true,
 				done,
@@ -758,7 +758,7 @@ export class Brain {
 			if (this.service.getState().fileHashes[path] === hash) {
 				return;
 			}
-			this.plugin.setStatus('Brain: indexing…');
+			this.plugin.setStatus(`${pluginName()}: indexing…`);
 			await this.service.indexFile(path, content);
 			const state = this.service.getState();
 			const fileCount = Object.keys(state.fileHashes).length;

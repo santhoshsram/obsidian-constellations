@@ -4,13 +4,13 @@ import {
 	VIEW_TYPE_RELATED,
 } from '../../src/ui/related-notes-view';
 import { TFile, WorkspaceLeaf } from 'obsidian';
-import type ObsidianBrainPlugin from '../../src/main';
+import type ConstellationsPlugin from '../../src/main';
 import type { BrainProgress } from '../../src/brain';
 import type { RelatedNote } from '../../src/search/related';
 
 describe('RelatedNotesView', () => {
 	let mockLeaf: WorkspaceLeaf;
-	let mockPlugin: ObsidianBrainPlugin;
+	let mockPlugin: ConstellationsPlugin;
 	let progressListeners: Array<(progress: BrainProgress) => void>;
 
 	let mockGetActiveFile: ReturnType<typeof vi.fn>;
@@ -108,7 +108,7 @@ describe('RelatedNotesView', () => {
 				},
 			},
 		};
-		mockPlugin = pluginStub as unknown as ObsidianBrainPlugin;
+		mockPlugin = pluginStub as unknown as ConstellationsPlugin;
 		(mockLeaf as unknown as { app: unknown }).app = mockPlugin.app;
 	});
 
@@ -131,7 +131,7 @@ describe('RelatedNotesView', () => {
 		const view = new RelatedNotesView(mockLeaf, mockPlugin);
 		await view.refresh();
 
-		const emptyEl = view.contentEl.querySelector('.brain-empty-state');
+		const emptyEl = view.contentEl.querySelector('.constellations-empty-state');
 		expect(emptyEl).not.toBeNull();
 		expect(emptyEl?.textContent).toBe('Downloading model (42%)');
 	});
@@ -143,7 +143,7 @@ describe('RelatedNotesView', () => {
 		const view = new RelatedNotesView(mockLeaf, mockPlugin);
 		await view.refresh();
 
-		const emptyEl = view.contentEl.querySelector('.brain-empty-state');
+		const emptyEl = view.contentEl.querySelector('.constellations-empty-state');
 		expect(emptyEl).not.toBeNull();
 		expect(emptyEl?.textContent).toBe('Loading model…');
 	});
@@ -161,7 +161,7 @@ describe('RelatedNotesView', () => {
 		const view = new RelatedNotesView(mockLeaf, mockPlugin);
 		await view.refresh();
 
-		const emptyEl = view.contentEl.querySelector('.brain-empty-state');
+		const emptyEl = view.contentEl.querySelector('.constellations-empty-state');
 		expect(emptyEl).not.toBeNull();
 		expect(emptyEl?.textContent).toBe('Indexing (23/150)…');
 	});
@@ -172,7 +172,7 @@ describe('RelatedNotesView', () => {
 		const view = new RelatedNotesView(mockLeaf, mockPlugin);
 		await view.refresh();
 
-		const emptyEl = view.contentEl.querySelector('.brain-empty-state');
+		const emptyEl = view.contentEl.querySelector('.constellations-empty-state');
 		expect(emptyEl).not.toBeNull();
 		expect(emptyEl?.textContent).toBe('Open a note to see related notes');
 	});
@@ -183,7 +183,7 @@ describe('RelatedNotesView', () => {
 		const view = new RelatedNotesView(mockLeaf, mockPlugin);
 		await view.refresh();
 
-		const emptyEl = view.contentEl.querySelector('.brain-empty-state');
+		const emptyEl = view.contentEl.querySelector('.constellations-empty-state');
 		expect(emptyEl).not.toBeNull();
 		expect(emptyEl?.textContent).toBe('No related notes found');
 	});
@@ -228,16 +228,16 @@ describe('RelatedNotesView', () => {
 		const view = new RelatedNotesView(mockLeaf, mockPlugin);
 		await view.refresh();
 
-		const cards = view.contentEl.querySelectorAll('.brain-related-note-card');
+		const cards = view.contentEl.querySelectorAll('.constellations-related-note-card');
 		expect(cards.length).toBe(1);
 
-		const title = view.contentEl.querySelector('.brain-related-note-title');
+		const title = view.contentEl.querySelector('.constellations-related-note-title');
 		expect(title?.textContent).toBe('Beta');
 
-		const sections = view.contentEl.querySelectorAll('.brain-related-section-item');
+		const sections = view.contentEl.querySelectorAll('.constellations-related-section-item');
 		expect(sections.length).toBe(2);
 
-		const secTexts = view.contentEl.querySelectorAll('.brain-related-section-text');
+		const secTexts = view.contentEl.querySelectorAll('.constellations-related-section-text');
 		expect(secTexts[0]?.textContent).toBe('Extraction');
 		expect(secTexts[1]?.textContent).toContain('Chunk without section heading text');
 	});
@@ -277,7 +277,7 @@ describe('RelatedNotesView', () => {
 		const view = new RelatedNotesView(mockLeaf, mockPlugin);
 		await view.refresh();
 
-		const header = view.contentEl.querySelector<HTMLElement>('.brain-related-note-header');
+		const header = view.contentEl.querySelector<HTMLElement>('.constellations-related-note-header');
 		expect(header).not.toBeNull();
 		header?.click();
 		await Promise.resolve();
@@ -330,7 +330,7 @@ describe('RelatedNotesView', () => {
 		const view = new RelatedNotesView(mockLeaf, mockPlugin);
 		await view.refresh();
 
-		const header = view.contentEl.querySelector<HTMLElement>('.brain-related-note-header');
+		const header = view.contentEl.querySelector<HTMLElement>('.constellations-related-note-header');
 		header?.click();
 		await Promise.resolve();
 
@@ -390,7 +390,7 @@ describe('RelatedNotesView', () => {
 		const view = new RelatedNotesView(mockLeaf, mockPlugin);
 		await view.refresh();
 
-		const sections = view.contentEl.querySelectorAll<HTMLElement>('.brain-related-section-item');
+		const sections = view.contentEl.querySelectorAll<HTMLElement>('.constellations-related-section-item');
 		const targetSection = sections[1];
 		targetSection?.click();
 		await Promise.resolve();
@@ -464,10 +464,10 @@ describe('RelatedNotesView', () => {
 		const view = new RelatedNotesView(mockLeaf, mockPlugin);
 		await view.refresh();
 
-		const toggleGroup = view.contentEl.querySelector('.brain-view-toggle-group');
+		const toggleGroup = view.contentEl.querySelector('.constellations-view-toggle-group');
 		expect(toggleGroup).toBeDefined();
 
-		const toggles = view.contentEl.querySelectorAll('.brain-view-toggle');
+		const toggles = view.contentEl.querySelectorAll('.constellations-view-toggle');
 		expect(toggles.length).toBe(2);
 
 		const graphToggle = toggles[1] as unknown as { click?: () => void; textContent?: string } | undefined;
@@ -515,12 +515,12 @@ describe('RelatedNotesView', () => {
 		const view = new RelatedNotesView(mockLeaf, mockPlugin);
 		await view.refresh();
 
-		const bullet = view.contentEl.querySelector('.brain-related-section-bullet');
+		const bullet = view.contentEl.querySelector('.constellations-related-section-bullet');
 		expect(bullet).not.toBeNull();
 		expect(bullet?.textContent).toContain('•');
 
 		// Chevron icon should NOT be present in section items
-		const chevron = view.contentEl.querySelector('.brain-related-section-icon svg');
+		const chevron = view.contentEl.querySelector('.constellations-related-section-icon svg');
 		expect(chevron).toBeNull();
 	});
 
@@ -532,7 +532,7 @@ describe('RelatedNotesView', () => {
 		const view = new RelatedNotesView(mockLeaf, mockPlugin);
 		await view.refresh(); // initial list view
 
-		const toggles = view.contentEl.querySelectorAll('.brain-view-toggle');
+		const toggles = view.contentEl.querySelectorAll('.constellations-view-toggle');
 		const listBtn = toggles[0] as unknown as { className: string };
 		const graphBtn = toggles[1] as unknown as { className: string; click: () => void };
 
@@ -547,9 +547,9 @@ describe('RelatedNotesView', () => {
 		expect(listBtn.className).not.toContain('is-active');
 
 		// In-tab loading state should be displayed immediately
-		const loadingState = view.contentEl.querySelector('.brain-loading-state');
+		const loadingState = view.contentEl.querySelector('.constellations-loading-state');
 		expect(loadingState).not.toBeNull();
-		expect(view.contentEl.querySelector('.brain-loading-text')?.textContent).toBe('Loading constellation…');
+		expect(view.contentEl.querySelector('.constellations-loading-text')?.textContent).toBe('Loading constellation…');
 
 		// Resolve graph data
 		resolveGraph({
@@ -561,6 +561,6 @@ describe('RelatedNotesView', () => {
 
 		// Now canvas is rendered and loading state is cleared
 		expect(view.contentEl.querySelector('canvas')).toBeDefined();
-		expect(view.contentEl.querySelector('.brain-loading-state')).toBeNull();
+		expect(view.contentEl.querySelector('.constellations-loading-state')).toBeNull();
 	});
 });

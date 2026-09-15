@@ -2,22 +2,22 @@
   Constellations styles
 */
 
-.setting-item.brain-vault-setting {
+.setting-item.constellations-vault-setting {
 	align-items: flex-start;
 }
 
-.setting-item.brain-vault-setting .setting-item-info {
+.setting-item.constellations-vault-setting .setting-item-info {
 	max-width: none;
 	flex: 1 1 auto;
 	min-width: 0;
 }
 
-.setting-item.brain-vault-setting .setting-item-control {
+.setting-item.constellations-vault-setting .setting-item-control {
 	flex: 0 0 115px;
 	justify-content: flex-end;
 }
 
-.setting-item.brain-vault-setting .setting-item-control button {
+.setting-item.constellations-vault-setting .setting-item-control button {
 	width: 115px;
 	min-width: 115px;
 	max-width: 115px;
@@ -27,18 +27,18 @@
 	text-overflow: ellipsis;
 }
 
-.brain-indexing-progress {
+.constellations-indexing-progress {
 	margin-top: 14px;
 }
 
-.brain-progress-row {
+.constellations-progress-row {
 	display: flex;
 	align-items: center;
 	gap: 10px;
 	margin-bottom: 4px;
 }
 
-.brain-progress-count {
+.constellations-progress-count {
 	font-weight: 500;
 	font-size: 0.85em;
 	color: var(--text-normal);
@@ -46,7 +46,7 @@
 	min-width: 60px;
 }
 
-.brain-progress-bar {
+.constellations-progress-bar {
 	flex: 1;
 	height: 6px;
 	accent-color: var(--interactive-accent);
@@ -54,17 +54,17 @@
 	overflow: hidden;
 }
 
-.brain-progress-bar::-webkit-progress-bar {
+.constellations-progress-bar::-webkit-progress-bar {
 	background-color: var(--background-modifier-border);
 	border-radius: 3px;
 }
 
-.brain-progress-bar::-webkit-progress-value {
+.constellations-progress-bar::-webkit-progress-value {
 	background-color: var(--interactive-accent);
 	border-radius: 3px;
 }
 
-.brain-progress-file {
+.constellations-progress-file {
 	font-size: 0.82em;
 	color: var(--text-muted);
 	white-space: nowrap;
@@ -73,70 +73,70 @@
 	margin-top: 2px;
 }
 
-.brain-progress-last-indexed {
+.constellations-progress-last-indexed {
 	font-size: 0.8em;
 	color: var(--text-muted);
 	margin-top: 2px;
 }
 
-.setting-item.brain-model-setting {
+.setting-item.constellations-model-setting {
 	align-items: flex-start;
 }
 
-.setting-item.brain-model-setting .setting-item-info {
+.setting-item.constellations-model-setting .setting-item-info {
 	max-width: none;
 }
 
-.setting-item.brain-model-setting .setting-item-control {
+.setting-item.constellations-model-setting .setting-item-control {
 	flex-shrink: 0;
 	display: flex;
 	align-items: center;
 	gap: 8px;
 }
 
-.setting-item.brain-model-setting .setting-item-control select {
+.setting-item.constellations-model-setting .setting-item-control select {
 	max-width: 220px;
 	text-overflow: ellipsis;
 }
 
-.setting-item.brain-matching-setting {
+.setting-item.constellations-matching-setting {
 	display: grid;
 	grid-template-columns: 1fr auto;
 	align-items: center;
 	row-gap: 8px;
 }
 
-.setting-item.brain-matching-setting .setting-item-info {
+.setting-item.constellations-matching-setting .setting-item-info {
 	display: contents;
 }
 
-.setting-item.brain-matching-setting .setting-item-name {
+.setting-item.constellations-matching-setting .setting-item-name {
 	grid-column: 1;
 	grid-row: 1;
 }
 
-.setting-item.brain-matching-setting .setting-item-control {
+.setting-item.constellations-matching-setting .setting-item-control {
 	grid-column: 2;
 	grid-row: 1;
 	justify-content: flex-end;
 }
 
-.setting-item.brain-matching-setting .setting-item-description {
+.setting-item.constellations-matching-setting .setting-item-description {
 	grid-column: 1 / -1;
 	grid-row: 2;
 	width: 100%;
 }
 
-.setting-item.brain-matching-setting .setting-item-description ul {
+.setting-item.constellations-matching-setting .setting-item-description ul {
 	margin: 6px 0 0 0;
 	padding-left: 20px;
 }
 
-.setting-item.brain-matching-setting .setting-item-description li {
+.setting-item.constellations-matching-setting .setting-item-description li {
 	margin-bottom: 4px;
 }
 
-.brain-model-status-container {
+.constellations-model-status-container {
 	margin-top: 16px;
 	display: flex;
 	flex-direction: row;
@@ -146,7 +146,7 @@
 	white-space: nowrap;
 }
 
-.brain-model-status {
+.constellations-model-status {
 	font-size: 0.85em;
 	font-weight: 500;
 	color: var(--text-normal);
@@ -156,26 +156,26 @@
 	flex-shrink: 0;
 }
 
-.brain-model-status-label {
+.constellations-model-status-label {
 	color: var(--text-muted);
 	margin-right: 4px;
 }
 
-.brain-model-status-value {
+.constellations-model-status-value {
 	color: var(--text-normal);
 	white-space: nowrap;
 }
 
-.brain-model-status-value.is-ready {
+.constellations-model-status-value.is-ready {
 	color: var(--text-success);
 	font-weight: 600;
 }
 
-.brain-model-status-value.is-downloading {
+.constellations-model-status-value.is-downloading {
 	color: var(--text-normal);
 }
 
-.brain-model-progress-row {
+.constellations-model-progress-row {
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
@@ -188,12 +188,12 @@
 }
 
 .is-invisible,
-.brain-progress-row.is-invisible,
-.brain-model-progress-row.is-invisible {
+.constellations-progress-row.is-invisible,
+.constellations-model-progress-row.is-invisible {
 	visibility: hidden !important;
 }
 
-.brain-model-progress-bar {
+.constellations-model-progress-bar {
 	flex: 1;
 	min-width: 30px;
 	height: 6px;
@@ -202,17 +202,17 @@
 	overflow: hidden;
 }
 
-.brain-model-progress-bar::-webkit-progress-bar {
+.constellations-model-progress-bar::-webkit-progress-bar {
 	background-color: var(--background-modifier-border);
 	border-radius: 3px;
 }
 
-.brain-model-progress-bar::-webkit-progress-value {
+.constellations-model-progress-bar::-webkit-progress-value {
 	background-color: var(--interactive-accent);
 	border-radius: 3px;
 }
 
-.brain-model-progress-pct {
+.constellations-model-progress-pct {
 	font-size: 0.78em;
 	color: var(--text-muted);
 	font-variant-numeric: tabular-nums;
@@ -221,7 +221,7 @@
 }
 
 /* Related notes sidebar view */
-.brain-empty-state-container {
+.constellations-empty-state-container {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -231,13 +231,13 @@
 	text-align: center;
 }
 
-.brain-empty-state {
+.constellations-empty-state {
 	color: var(--text-muted);
 	font-size: 0.88em;
 	line-height: 1.4;
 }
 
-.brain-related-notes {
+.constellations-related-notes {
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
@@ -246,16 +246,16 @@
 	overflow-y: auto;
 }
 
-.brain-related-note-card {
+.constellations-related-note-card {
 	border-bottom: 1px solid var(--background-modifier-border);
 	padding: 8px 10px;
 }
 
-.brain-related-note-card:last-child {
+.constellations-related-note-card:last-child {
 	border-bottom: none;
 }
 
-.brain-related-note-header {
+.constellations-related-note-header {
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -265,23 +265,23 @@
 	transition: background-color 0.1s ease;
 }
 
-.brain-related-note-header:hover {
+.constellations-related-note-header:hover {
 	background-color: var(--background-modifier-hover);
 }
 
-.brain-related-note-icon {
+.constellations-related-note-icon {
 	display: inline-flex;
 	align-items: center;
 	color: var(--interactive-accent);
 	flex-shrink: 0;
 }
 
-.brain-related-note-icon svg {
+.constellations-related-note-icon svg {
 	width: 14px;
 	height: 14px;
 }
 
-.brain-related-note-title {
+.constellations-related-note-title {
 	font-weight: 500;
 	font-size: 0.88em;
 	color: var(--text-normal);
@@ -291,7 +291,7 @@
 	flex: 1;
 }
 
-.brain-related-note-sections {
+.constellations-related-note-sections {
 	margin-left: 10px;
 	padding-left: 8px;
 	border-left: 1px solid var(--background-modifier-border);
@@ -302,7 +302,7 @@
 	gap: 2px;
 }
 
-.brain-related-section-item {
+.constellations-related-section-item {
 	display: flex;
 	align-items: center;
 	gap: 5px;
@@ -314,12 +314,12 @@
 	transition: background-color 0.1s ease, color 0.1s ease;
 }
 
-.brain-related-section-item:hover {
+.constellations-related-section-item:hover {
 	background-color: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
 
-.brain-related-section-bullet {
+.constellations-related-section-bullet {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -331,19 +331,19 @@
 	user-select: none;
 }
 
-.brain-related-section-icon {
+.constellations-related-section-icon {
 	display: inline-flex;
 	align-items: center;
 	flex-shrink: 0;
 	opacity: 0.7;
 }
 
-.brain-related-section-icon svg {
+.constellations-related-section-icon svg {
 	width: 11px;
 	height: 11px;
 }
 
-.brain-related-section-text {
+.constellations-related-section-text {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -351,7 +351,7 @@
 }
 
 /* Sidebar related notes view container */
-.brain-related-view-content {
+.constellations-related-view-content {
 	display: flex;
 	flex-direction: column;
 	height: 100%;
@@ -360,7 +360,7 @@
 }
 
 /* Sidebar segmented toggle header */
-.brain-view-header {
+.constellations-view-header {
 	display: flex;
 	justify-content: center;
 	padding: 8px 12px;
@@ -368,7 +368,7 @@
 	flex-shrink: 0;
 }
 
-.brain-view-toggle-group {
+.constellations-view-toggle-group {
 	display: inline-flex;
 	background-color: var(--background-modifier-form-field);
 	border-radius: 6px;
@@ -376,7 +376,7 @@
 	gap: 2px;
 }
 
-.brain-view-toggle {
+.constellations-view-toggle {
 	border: none;
 	background: transparent;
 	color: var(--text-muted);
@@ -389,24 +389,24 @@
 	transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.brain-view-toggle:hover {
+.constellations-view-toggle:hover {
 	color: var(--text-normal);
 }
 
-.brain-view-toggle.is-active {
+.constellations-view-toggle.is-active {
 	background-color: var(--interactive-accent);
 	color: var(--text-on-accent);
 	font-weight: 600;
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
-.brain-view-toggle.is-active:hover {
+.constellations-view-toggle.is-active:hover {
 	background-color: var(--interactive-accent-hover, var(--interactive-accent));
 	color: var(--text-on-accent);
 }
 
 /* Sidebar Graph container */
-.brain-view-body {
+.constellations-view-body {
 	flex: 1;
 	min-height: 0;
 	position: relative;
@@ -417,7 +417,7 @@
 	overflow: hidden;
 }
 
-.brain-loading-state {
+.constellations-loading-state {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -427,28 +427,28 @@
 	font-size: 0.9em;
 }
 
-.brain-loading-spinner {
+.constellations-loading-spinner {
 	width: 22px;
 	height: 22px;
 	border: 2.5px solid var(--background-modifier-border);
 	border-top-color: var(--interactive-accent);
 	border-radius: 50%;
-	animation: brain-spin 0.75s linear infinite;
+	animation: constellations-spin 0.75s linear infinite;
 }
 
-.brain-loading-text {
+.constellations-loading-text {
 	color: var(--text-muted);
 	font-size: 0.88em;
 	letter-spacing: 0.01em;
 }
 
-@keyframes brain-spin {
+@keyframes constellations-spin {
 	to {
 		transform: rotate(360deg);
 	}
 }
 
-.brain-context-graph-sidebar-container {
+.constellations-context-graph-sidebar-container {
 	flex: 1;
 	min-height: 0;
 	width: 100%;
@@ -459,7 +459,7 @@
 }
 
 /* Fullscreen Context Graph Modal */
-.modal.brain-context-graph-modal {
+.modal.constellations-context-graph-modal {
 	width: 94vw;
 	height: 92vh;
 	max-width: 1700px;
@@ -472,7 +472,7 @@
 	border-radius: 12px;
 }
 
-.brain-context-graph-header {
+.constellations-context-graph-header {
 	position: absolute;
 	top: 24px;
 	left: 28px;
@@ -485,11 +485,11 @@
 	gap: 16px;
 }
 
-.brain-context-graph-header > * {
+.constellations-context-graph-header > * {
 	pointer-events: auto;
 }
 
-.brain-context-graph-search-container {
+.constellations-context-graph-search-container {
 	display: flex;
 	align-items: center;
 	gap: 8px;
@@ -504,7 +504,7 @@
 	box-sizing: border-box;
 }
 
-.brain-context-graph-search-icon {
+.constellations-context-graph-search-icon {
 	display: flex;
 	align-items: center;
 	color: var(--text-muted);
@@ -512,20 +512,20 @@
 	transition: color 0.15s ease;
 }
 
-.brain-context-graph-search-icon svg {
+.constellations-context-graph-search-icon svg {
 	width: 15px;
 	height: 15px;
 }
 
-.brain-context-graph-search-container.is-loading .brain-context-graph-search-icon {
+.constellations-context-graph-search-container.is-loading .constellations-context-graph-search-icon {
 	color: var(--interactive-accent);
 }
 
-.brain-context-graph-search-container.is-loading .brain-context-graph-search-icon svg {
-	animation: brain-spin 0.8s linear infinite;
+.constellations-context-graph-search-container.is-loading .constellations-context-graph-search-icon svg {
+	animation: constellations-spin 0.8s linear infinite;
 }
 
-.brain-context-graph-search-input {
+.constellations-context-graph-search-input {
 	border: none !important;
 	background: transparent !important;
 	color: var(--text-normal) !important;
@@ -537,7 +537,7 @@
 	padding: 0 !important;
 }
 
-.brain-context-graph-search-clear {
+.constellations-context-graph-search-clear {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -550,18 +550,18 @@
 	transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease;
 }
 
-.brain-context-graph-search-clear:hover {
+.constellations-context-graph-search-clear:hover {
 	opacity: 1;
 	color: var(--text-normal);
 	background-color: var(--background-modifier-hover);
 }
 
-.brain-context-graph-search-clear svg {
+.constellations-context-graph-search-clear svg {
 	width: 13px;
 	height: 13px;
 }
 
-.brain-context-graph-center-container {
+.constellations-context-graph-center-container {
 	display: flex;
 	align-items: center;
 	gap: 10px;
@@ -575,11 +575,11 @@
 	box-sizing: border-box;
 }
 
-.brain-context-graph-center-container:has(.brain-context-graph-open-btn.is-hidden) {
+.constellations-context-graph-center-container:has(.constellations-context-graph-open-btn.is-hidden) {
 	padding-right: 14px;
 }
 
-.brain-context-graph-center-title {
+.constellations-context-graph-center-title {
 	font-weight: 600;
 	font-size: 0.86em;
 	color: var(--text-normal);
@@ -588,7 +588,7 @@
 	white-space: nowrap;
 }
 
-.brain-context-graph-open-btn {
+.constellations-context-graph-open-btn {
 	border: none;
 	background-color: var(--interactive-accent);
 	color: var(--text-on-accent);
@@ -607,11 +607,11 @@
 	box-sizing: border-box;
 }
 
-.brain-context-graph-open-btn:hover {
+.constellations-context-graph-open-btn:hover {
 	opacity: 0.85;
 }
 
-.brain-context-graph-canvas-container {
+.constellations-context-graph-canvas-container {
 	position: absolute;
 	inset: 0;
 	width: 100%;
@@ -619,22 +619,22 @@
 	overflow: hidden;
 }
 
-.brain-context-graph-canvas {
+.constellations-context-graph-canvas {
 	display: block;
 	width: 100%;
 	height: 100%;
 	cursor: default;
 }
 
-.brain-context-graph-canvas.is-grabbing {
+.constellations-context-graph-canvas.is-grabbing {
 	cursor: grabbing;
 }
 
-.brain-context-graph-canvas.is-hovering-node {
+.constellations-context-graph-canvas.is-hovering-node {
 	cursor: pointer;
 }
 
-.brain-context-graph-empty {
+.constellations-context-graph-empty {
 	position: absolute;
 	top: 50%;
 	left: 50%;
@@ -646,7 +646,7 @@
 }
 
 /* Context Graph Sneak Peek Tooltip (Frosted Glass) */
-.brain-context-graph-tooltip {
+.constellations-context-graph-tooltip {
 	position: absolute;
 	z-index: 30;
 	pointer-events: none;
@@ -663,7 +663,7 @@
 	transition: opacity 0.12s ease;
 }
 
-.brain-context-graph-tooltip-header {
+.constellations-context-graph-tooltip-header {
 	font-size: 0.72em;
 	font-weight: 600;
 	text-transform: uppercase;
@@ -672,13 +672,13 @@
 	margin-bottom: 4px;
 }
 
-.brain-context-graph-tooltip-list {
+.constellations-context-graph-tooltip-list {
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
 }
 
-.brain-context-graph-tooltip-item {
+.constellations-context-graph-tooltip-item {
 	display: flex;
 	align-items: baseline;
 	gap: 6px;
@@ -688,17 +688,15 @@
 	overflow: hidden;
 }
 
-.brain-context-graph-tooltip-number {
+.constellations-context-graph-tooltip-number {
 	color: var(--text-muted);
 	font-size: 0.85em;
 	font-variant-numeric: tabular-nums;
 	flex-shrink: 0;
 }
 
-.brain-context-graph-tooltip-text {
+.constellations-context-graph-tooltip-text {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
-
-

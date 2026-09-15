@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Brain } from '../src/brain';
 import { ChunkIndex } from '../src/index/chunk-index';
 import { BruteForceVectorStore } from '../src/index/vector-store';
-import type ObsidianBrainPlugin from '../src/main';
+import type ConstellationsPlugin from '../src/main';
 
 describe('Brain.getGraphData', () => {
 	it('returns empty graph when brain is not ready', async () => {
@@ -11,7 +11,7 @@ describe('Brain.getGraphData', () => {
 				maxRelatedNotes: 10,
 				minScore: 0.45,
 			},
-		} as unknown as ObsidianBrainPlugin;
+		} as unknown as ConstellationsPlugin;
 
 		const brain = new Brain(mockPlugin);
 		const data = await brain.getGraphData({ type: 'note', path: 'Foo.md' });
@@ -25,7 +25,7 @@ describe('Brain.getGraphData', () => {
 				maxRelatedNotes: 10,
 				minScore: 0.45,
 			},
-		} as unknown as ObsidianBrainPlugin;
+		} as unknown as ConstellationsPlugin;
 
 		const brain = new Brain(mockPlugin);
 		const index = new ChunkIndex(new BruteForceVectorStore(2));
@@ -53,7 +53,7 @@ describe('Brain.getGraphData', () => {
 				minScore: 0.45,
 				retrievalStrategy: 'document',
 			},
-		} as unknown as ObsidianBrainPlugin;
+		} as unknown as ConstellationsPlugin;
 
 		const brain = new Brain(mockPlugin);
 		const index = new ChunkIndex(new BruteForceVectorStore(4));

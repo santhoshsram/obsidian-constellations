@@ -1,8 +1,8 @@
 import { Plugin, type WorkspaceLeaf } from 'obsidian';
 import {
 	DEFAULT_SETTINGS,
-	ObsidianBrainSettings,
-	ObsidianBrainSettingTab,
+	ConstellationsSettings,
+	ConstellationsSettingTab,
 } from './settings';
 import { Brain } from './brain';
 import { setPluginName } from './plugin-name';
@@ -12,8 +12,8 @@ import {
 } from './ui/related-notes-view';
 import { ContextGraphModal } from './ui/graph/context-graph-modal';
 
-export default class ObsidianBrainPlugin extends Plugin {
-	settings!: ObsidianBrainSettings;
+export default class ConstellationsPlugin extends Plugin {
+	settings!: ConstellationsSettings;
 	brain!: Brain;
 	private statusBarEl!: HTMLElement;
 
@@ -29,7 +29,7 @@ export default class ObsidianBrainPlugin extends Plugin {
 			new ContextGraphModal(this.app, this).open();
 		});
 
-		this.addSettingTab(new ObsidianBrainSettingTab(this.app, this));
+		this.addSettingTab(new ConstellationsSettingTab(this.app, this));
 
 		this.registerView(
 			VIEW_TYPE_RELATED,
@@ -131,7 +131,7 @@ export default class ObsidianBrainPlugin extends Plugin {
 		this.settings = Object.assign(
 			{},
 			DEFAULT_SETTINGS,
-			(await this.loadData()) as Partial<ObsidianBrainSettings>,
+			(await this.loadData()) as Partial<ConstellationsSettings>,
 		);
 	}
 

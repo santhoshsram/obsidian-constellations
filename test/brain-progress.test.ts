@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Brain } from '../src/brain';
-import type ObsidianBrainPlugin from '../src/main';
+import type ConstellationsPlugin from '../src/main';
 
 vi.mock('obsidian', () => ({
 	Notice: vi.fn(),
@@ -69,7 +69,7 @@ describe('Brain progress transitions during init', () => {
 					on: vi.fn(),
 				},
 			},
-			manifest: { id: 'obsidian-brain' },
+			manifest: { id: 'constellations' },
 			settings: {
 				embeddingModel: 'test-model',
 				rerankerModel: 'cross-encoder/ettin-reranker-150m-v1',
@@ -84,7 +84,7 @@ describe('Brain progress transitions during init', () => {
 			setStatus: vi.fn((s: string) => statuses.push(s)),
 			saveSettings: vi.fn(),
 			registerEvent: vi.fn(),
-		} as unknown as ObsidianBrainPlugin;
+		} as unknown as ConstellationsPlugin;
 
 		const brain = new Brain(fakePlugin);
 		brain.onProgress((p) => {
@@ -94,11 +94,11 @@ describe('Brain progress transitions during init', () => {
 		await brain.init();
 
 		// Check statuses include descriptive model download & check messages
-		expect(statuses).toContain('Brain: downloading embedding model 100%');
-		expect(statuses).toContain('Brain: loading embedding model…');
-		expect(statuses).toContain('Brain: loading reranking model…');
-		expect(statuses).toContain('Brain: downloading reranking model 50%');
-		expect(statuses).toContain('Brain: checking for changes…');
+		expect(statuses).toContain('Constellations: downloading embedding model 100%');
+		expect(statuses).toContain('Constellations: loading embedding model…');
+		expect(statuses).toContain('Constellations: loading reranking model…');
+		expect(statuses).toContain('Constellations: downloading reranking model 50%');
+		expect(statuses).toContain('Constellations: checking for changes…');
 		expect(statuses[statuses.length - 1]).toBe('');
 
 		// Check vault progress does NOT contain model downloads
@@ -147,7 +147,7 @@ describe('Brain progress transitions during init', () => {
 					on: vi.fn(),
 				},
 			},
-			manifest: { id: 'obsidian-brain' },
+			manifest: { id: 'constellations' },
 			settings: {
 				embeddingModel: 'test-model',
 				rerankerModel: 'cross-encoder/ettin-reranker-150m-v1',
@@ -162,19 +162,19 @@ describe('Brain progress transitions during init', () => {
 			setStatus: vi.fn((s: string) => statuses.push(s)),
 			saveSettings: vi.fn(),
 			registerEvent: vi.fn(),
-		} as unknown as ObsidianBrainPlugin;
+		} as unknown as ConstellationsPlugin;
 
 		const brain = new Brain(fakePlugin);
 		await brain.init();
 
 		// Should NOT say downloading
-		expect(statuses).not.toContain('Brain: downloading embedding model 100%');
-		expect(statuses).not.toContain('Brain: downloading reranking model 50%');
+		expect(statuses).not.toContain('Constellations: downloading embedding model 100%');
+		expect(statuses).not.toContain('Constellations: downloading reranking model 50%');
 
 		// Should say loading & checking
-		expect(statuses).toContain('Brain: loading embedding model…');
-		expect(statuses).toContain('Brain: loading reranking model…');
-		expect(statuses).toContain('Brain: checking for changes…');
+		expect(statuses).toContain('Constellations: loading embedding model…');
+		expect(statuses).toContain('Constellations: loading reranking model…');
+		expect(statuses).toContain('Constellations: checking for changes…');
 		expect(statuses[statuses.length - 1]).toBe('');
 	});
 });

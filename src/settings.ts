@@ -1,5 +1,5 @@
 import { App, ButtonComponent, PluginSettingTab, Setting } from 'obsidian';
-import type ObsidianBrainPlugin from './main';
+import type ConstellationsPlugin from './main';
 import type { BrainProgress } from './brain';
 import {
 	EMBEDDING_MODELS,
@@ -9,7 +9,7 @@ import {
 } from './embed/models';
 import type { RetrievalStrategy } from './search/retrieval';
 
-export interface ObsidianBrainSettings {
+export interface ConstellationsSettings {
 	/** Hugging Face model ID used for embeddings. */
 	embeddingModel: string;
 	/** Hugging Face model ID used for reranking. */
@@ -36,7 +36,7 @@ export interface ObsidianBrainSettings {
 	sidebarViewMode: 'list' | 'graph';
 }
 
-export const DEFAULT_SETTINGS: ObsidianBrainSettings = {
+export const DEFAULT_SETTINGS: ConstellationsSettings = {
 	embeddingModel: DEFAULT_MODEL.modelId,
 	rerankerModel: DEFAULT_RERANKER.modelId,
 	rerankerEnabled: true,
@@ -85,14 +85,14 @@ export function renderModelStatus(
 ): void {
 	containerEl.empty();
 	containerEl.createSpan({
-		cls: 'brain-model-status-label',
+		cls: 'constellations-model-status-label',
 		text: 'Status: ',
 	});
 	const formatted = formatModelStatus(status);
 	const isReady = status?.state === 'ready';
 	const isDownloading = status?.state === 'downloading';
 	const cls = [
-		'brain-model-status-value',
+		'constellations-model-status-value',
 		isReady ? 'is-ready' : '',
 		isDownloading ? 'is-downloading' : '',
 	]
@@ -124,11 +124,11 @@ export function formatLastIndexed(
 		  });
 }
 
-export class ObsidianBrainSettingTab extends PluginSettingTab {
-	plugin: ObsidianBrainPlugin;
+export class ConstellationsSettingTab extends PluginSettingTab {
+	plugin: ConstellationsPlugin;
 	private unsubscribeProgress?: () => void;
 
-	constructor(app: App, plugin: ObsidianBrainPlugin) {
+	constructor(app: App, plugin: ConstellationsPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -158,7 +158,7 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 	private renderVaultIndexingCard(containerEl: HTMLElement): VaultIndexingCard {
 		let indexButton: ButtonComponent;
 		const vaultSetting = new Setting(containerEl)
-			.setClass('brain-vault-setting')
+			.setClass('constellations-vault-setting')
 			.setName('Vault indexing')
 			.setDesc(
 				'Load the embedding model and index the vault. Runs automatically on startup and file changes.',
@@ -171,14 +171,14 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 			});
 
 		const progressContainer = vaultSetting.descEl.createDiv({
-			cls: 'brain-indexing-progress',
+			cls: 'constellations-indexing-progress',
 		});
 
-		const progressRow = progressContainer.createDiv({ cls: 'brain-progress-row' });
-		const progressCount = progressRow.createSpan({ cls: 'brain-progress-count' });
-		const progressBar = progressRow.createEl('progress', { cls: 'brain-progress-bar' });
-		const statsEl = progressContainer.createDiv({ cls: 'brain-progress-file' });
-		const lastIndexedEl = progressContainer.createDiv({ cls: 'brain-progress-last-indexed' });
+		const progressRow = progressContainer.createDiv({ cls: 'constellations-progress-row' });
+		const progressCount = progressRow.createSpan({ cls: 'constellations-progress-count' });
+		const progressBar = progressRow.createEl('progress', { cls: 'constellations-progress-bar' });
+		const statsEl = progressContainer.createDiv({ cls: 'constellations-progress-file' });
+		const lastIndexedEl = progressContainer.createDiv({ cls: 'constellations-progress-last-indexed' });
 
 		return { indexButton: indexButton!, progressRow, progressCount, progressBar, statsEl, lastIndexedEl };
 	}
@@ -205,7 +205,7 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 	private renderEmbeddingModelCard(containerEl: HTMLElement): ModelCard {
 		let embeddingDropdown: HTMLSelectElement;
 		const embeddingSetting = new Setting(containerEl)
-			.setClass('brain-model-setting')
+			.setClass('constellations-model-setting')
 			.setName('Embedding model')
 			.setDesc(
 				'Local model used for semantic search. Changing models triggers a re-index. ' +
@@ -240,7 +240,7 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 	private renderRerankerModelCard(containerEl: HTMLElement): ModelCard {
 		let rerankerDropdown: HTMLSelectElement;
 		const rerankerSetting = new Setting(containerEl)
-			.setClass('brain-model-setting')
+			.setClass('constellations-model-setting')
 			.setName('Reranking model')
 			.addDropdown((dropdown) => {
 				for (const [id, spec] of Object.entries(RERANKER_MODELS)) {
@@ -264,13 +264,13 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 	/** Shared status/progress row under a model dropdown's description. */
 	private renderModelStatusRow(setting: Setting): Omit<ModelCard, 'dropdown'> {
 		const statusContainer = setting.descEl.createDiv({
-			cls: 'brain-model-status-container',
+			cls: 'constellations-model-status-container',
 		});
-		const statusEl = statusContainer.createDiv({ cls: 'brain-model-status' });
-		const progressRow = statusContainer.createDiv({ cls: 'brain-model-progress-row' });
-		const progressBar = progressRow.createEl('progress', { cls: 'brain-model-progress-bar' });
+		const statusEl = statusContainer.createDiv({ cls: 'constellations-model-status' });
+		const progressRow = statusContainer.createDiv({ cls: 'constellations-model-progress-row' });
+		const progressBar = progressRow.createEl('progress', { cls: 'constellations-model-progress-bar' });
 		progressBar.max = 100;
-		const progressPct = progressRow.createSpan({ cls: 'brain-model-progress-pct' });
+		const progressPct = progressRow.createSpan({ cls: 'constellations-model-progress-pct' });
 
 		return { statusEl, progressRow, progressBar, progressPct };
 	}
@@ -299,7 +299,7 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 		});
 
 		new Setting(containerEl)
-			.setClass('brain-matching-setting')
+			.setClass('constellations-matching-setting')
 			.setName('Matching mode')
 			.setDesc(strategyDesc)
 			.addDropdown((dropdown) => {

@@ -120,22 +120,22 @@ export function updateTooltipContent(
 
 	tooltipEl.empty();
 	tooltipEl.createDiv({
-		cls: 'brain-context-graph-tooltip-header',
+		cls: 'constellations-context-graph-tooltip-header',
 		text: 'Connections',
 	});
 	const list = tooltipEl.createDiv({
-		cls: 'brain-context-graph-tooltip-list',
+		cls: 'constellations-context-graph-tooltip-list',
 	});
 	node.sneakPeek.slice(0, 5).forEach((title, idx) => {
 		const item = list.createDiv({
-			cls: 'brain-context-graph-tooltip-item',
+			cls: 'constellations-context-graph-tooltip-item',
 		});
 		item.createSpan({
-			cls: 'brain-context-graph-tooltip-number',
+			cls: 'constellations-context-graph-tooltip-number',
 			text: `${idx + 1}.`,
 		});
 		item.createSpan({
-			cls: 'brain-context-graph-tooltip-text',
+			cls: 'constellations-context-graph-tooltip-text',
 			text: title,
 		});
 	});

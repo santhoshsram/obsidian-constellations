@@ -7,6 +7,8 @@
  * regressions can never be hidden by a toggle.
  */
 
+import { pluginName } from '../plugin-name';
+
 export interface LoggerOptions {
 	enabled: boolean;
 	/** Millisecond threshold before a single file is flagged as slow. */
@@ -45,7 +47,7 @@ export class ConsoleLogger implements Logger {
 	private static readonly PENDING_CAP = 5000;
 
 	constructor(
-		tag = 'obsidian-brain',
+		tag = pluginName(),
 		options: LoggerOptions = { enabled: false },
 	) {
 		this.tag = tag;
