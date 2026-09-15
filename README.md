@@ -44,6 +44,10 @@ Fine-tune similarity thresholds, result limits, and tab behaviors.
 - The only network access is a **one-time download** of model weights from Hugging Face on first activation (cached locally in your browser/vault cache).
 - Vault notes are never transmitted or modified. The index is stored strictly in `.obsidian/plugins/constellations/`.
 
+## Desktop only
+
+Constellations requires WebGPU (with a WASM fallback) for on-device inference, which Obsidian only exposes in its desktop Electron shell, not on mobile. `isDesktopOnly` is set deliberately for this reason, not as a placeholder.
+
 ## Settings
 
 - **Vault indexing:** Manually re-index the vault (runs automatically on startup/changes).

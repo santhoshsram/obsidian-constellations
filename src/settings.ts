@@ -206,7 +206,8 @@ export class ObsidianBrainSettingTab extends PluginSettingTab {
 			.setClass('brain-model-setting')
 			.setName('Embedding model')
 			.setDesc(
-				'Local model used for semantic search. Changing models triggers a re-index.',
+				'Local model used for semantic search. Changing models triggers a re-index. ' +
+					'Models are downloaded once from Hugging Face on first use and cached locally.',
 			)
 			.addDropdown((dropdown) => {
 				for (const [id, spec] of Object.entries(EMBEDDING_MODELS)) {
