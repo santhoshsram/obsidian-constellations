@@ -9,7 +9,7 @@ import type ObsidianBrainPlugin from './main';
 import { ChunkIndex } from './index/chunk-index';
 import { BruteForceVectorStore } from './index/vector-store';
 import { IndexingService } from './index/indexing-service';
-import { loadIndex, saveIndex } from './index/persistence';
+import { loadIndex, saveIndex, type LoadedIndex } from './index/persistence';
 import { ObsidianIndexStorage } from './obsidian/storage';
 import { ObsidianVaultSource } from './obsidian/vault-source';
 import { TransformersEmbedder } from './embed/embedder';
@@ -24,6 +24,7 @@ import {
 	DEFAULT_MODEL,
 	RERANKER_MODELS,
 	DEFAULT_RERANKER,
+	type EmbeddingModelSpec,
 } from './embed/models';
 import { TransformersReranker, type Reranker } from './embed/reranker';
 import { HeuristicTokenCounter } from './chunking/tokens';
@@ -34,6 +35,7 @@ import {
 import { relatedNotes } from './search/related';
 import type { RelatedNote } from './search/related';
 import { rerankCandidateChunks } from './search/rerank';
+import type { SyncResult } from './index/indexing-service';
 import { RETRIEVAL_CONFIG } from './config';
 import { debounce } from './utils/debounce';
 import { ConsoleLogger } from './utils/logger';
@@ -220,55 +222,48 @@ export class Brain {
 		});
 	}
 
-	/** Load the model and index, then sync the vault. */
 	/** True once init() has been started (prevents double-starts). */
 	get started(): boolean {
 		return this.initStarted;
 	}
 	private initStarted = false;
 
-	async init(): Promise<void> {
-		if (this.initStarted) {
-			return;
-		}
-		this.initStarted = true;
-		const pluginDir = await this.ensureLogFile();
-		const model = this.currentModel();
-		this.storage = new ObsidianIndexStorage(this.plugin.app, pluginDir);
-		this.logger.info(`using model ${model.modelId}`);
-		const vault = new ObsidianVaultSource(this.plugin.app);
-
-		// Load a persisted index; a model switch forces a full rebuild without reading old vectors.
-		let state = null;
+	/**
+	 * Load a persisted index for the current model, or create an empty one.
+	 * A model switch (dimensions/modelId mismatch) forces a full rebuild
+	 * without reading old vectors; `loadIndex` handles that check.
+	 */
+	private async loadOrCreateIndex(
+		model: EmbeddingModelSpec,
+	): Promise<{ index: ChunkIndex; state: LoadedIndex['state'] | null }> {
 		try {
-			const loaded = await loadIndex(this.storage, {
+			const loaded = await loadIndex(this.storage!, {
 				expectedDimensions: model.dimensions,
 				expectedModelId: model.modelId,
 			});
 			if (loaded) {
-				this.index = loaded.index;
-				state = loaded.state;
-				const fileCount = Object.keys(state.fileHashes).length;
+				const fileCount = Object.keys(loaded.state.fileHashes).length;
 				this.updateProgress({
 					done: fileCount,
 					total: fileCount,
-					currentFile: `${fileCount} files / ${this.index.size} sections indexed`,
+					currentFile: `${fileCount} files / ${loaded.index.size} sections indexed`,
 				});
-			} else {
-				this.logger.info(
-					`no index found for model ${model.modelId}, starting fresh`,
-				);
+				return { index: loaded.index, state: loaded.state };
 			}
+			this.logger.info(`no index found for model ${model.modelId}, starting fresh`);
 		} catch (e) {
 			this.logger.warn('failed to load index, rebuilding', { kind: 'load' }, e);
 		}
-		if (!this.index) {
-			this.index = new ChunkIndex(
-				new BruteForceVectorStore(model.dimensions),
-			);
-		}
+		return { index: new ChunkIndex(new BruteForceVectorStore(model.dimensions)), state: null };
+	}
 
-		let pipe;
+	/**
+	 * Load the embedding pipeline for the current model, driving
+	 * embeddingStatus/plugin status text throughout. Returns null (having
+	 * already set error status and notified the user) on failure so init()
+	 * can abort without duplicating that handling.
+	 */
+	private async loadEmbeddingPipeline(model: EmbeddingModelSpec): Promise<Embedder | null> {
 		try {
 			this.logger.info(`creating pipeline for model ${model.modelId}`);
 			this.setEmbeddingStatus({ state: 'loading' });
@@ -298,12 +293,10 @@ export class Brain {
 				},
 				this.logger,
 			);
-			pipe = created.pipe;
-			this.logger.info(
-				`embedding pipeline ready on device=${created.device}`,
-			);
+			this.logger.info(`embedding pipeline ready on device=${created.device}`);
 			this.setEmbeddingStatus({ state: 'ready', device: created.device });
 			this.plugin.setStatus('');
+			return new TransformersEmbedder(created.pipe, model);
 		} catch (e) {
 			this.setEmbeddingStatus({ state: 'error', error: String(e) });
 			this.plugin.setStatus('Brain: model failed to load');
@@ -312,9 +305,30 @@ export class Brain {
 				0,
 			);
 			this.logger.error('model load failed', e);
+			return null;
+		}
+	}
+
+	async init(): Promise<void> {
+		if (this.initStarted) {
 			return;
 		}
-		this.embedder = new TransformersEmbedder(pipe, model);
+		this.initStarted = true;
+		const pluginDir = await this.ensureLogFile();
+		const model = this.currentModel();
+		this.storage = new ObsidianIndexStorage(this.plugin.app, pluginDir);
+		this.logger.info(`using model ${model.modelId}`);
+		const vault = new ObsidianVaultSource(this.plugin.app);
+
+		const loaded = await this.loadOrCreateIndex(model);
+		this.index = loaded.index;
+		const state = loaded.state;
+
+		const embedder = await this.loadEmbeddingPipeline(model);
+		if (!embedder) {
+			return;
+		}
+		this.embedder = embedder;
 
 		if (this.plugin.settings.rerankerEnabled !== false) {
 			await this.loadReranker();
@@ -331,25 +345,9 @@ export class Brain {
 			this.service.setState(state);
 		}
 
-		let result;
+		let result: SyncResult;
 		try {
-			this.plugin.setStatus('Brain: checking for changes…');
-			this.updateProgress({
-				isIndexing: true,
-				done: 0,
-				total: 0,
-				currentFile: 'Checking vault for changes…',
-			});
-			result = await this.service.syncVault(vault, (done, total, path) => {
-				this.plugin.setStatus(`Brain: indexing (${done}/${total})…`);
-				this.updateProgress({
-					isIndexing: true,
-					done,
-					total,
-					currentFile: path,
-				});
-			});
-			await this.persist();
+			result = await this.performVaultSync(vault);
 		} catch (e) {
 			this.updateProgress({
 				isIndexing: false,
@@ -408,23 +406,7 @@ export class Brain {
 		);
 		const vault = new ObsidianVaultSource(this.plugin.app);
 		try {
-			this.plugin.setStatus('Brain: checking for changes…');
-			this.updateProgress({
-				isIndexing: true,
-				done: 0,
-				total: 0,
-				currentFile: 'Checking vault for changes…',
-			});
-			const result = await this.service.syncVault(vault, (done, total, path) => {
-				this.plugin.setStatus(`Brain: indexing (${done}/${total})…`);
-				this.updateProgress({
-					isIndexing: true,
-					done,
-					total,
-					currentFile: path,
-				});
-			});
-			await this.persist();
+			const result = await this.performVaultSync(vault);
 			this.ready = true;
 			this.recordIndexCompletion(
 				`${result.total} files / ${this.index.size} sections indexed`,
@@ -440,6 +422,45 @@ export class Brain {
 			this.plugin.setStatus('Brain: reindexing failed');
 			this.logger.error('reindex failed', e);
 		}
+	}
+
+	/**
+	 * Sync the vault against `this.service`'s index (checking-for-changes
+	 * status, incremental indexing progress, persistence) and surface the
+	 * result. Shared by init() and reindex(), both of which set up the
+	 * index/service beforehand and each keep their own catch block, since
+	 * a fresh init() must abort entirely on failure while reindex() should
+	 * just report the error and leave any previously-ready state intact.
+	 *
+	 * Intentionally does not touch embeddingStatus/rerankerStatus or any
+	 * model-download progress: sync progress and model-download progress
+	 * are separate UI surfaces (indexing progress bar vs. model status),
+	 * and merging them previously caused model-download progress to bleed
+	 * into the indexing bar and the reindex button to show "downloading
+	 * model..." incorrectly.
+	 */
+	private async performVaultSync(vault: ObsidianVaultSource): Promise<SyncResult> {
+		if (!this.service) {
+			throw new Error('performVaultSync called before service was initialized');
+		}
+		this.plugin.setStatus('Brain: checking for changes…');
+		this.updateProgress({
+			isIndexing: true,
+			done: 0,
+			total: 0,
+			currentFile: 'Checking vault for changes…',
+		});
+		const result = await this.service.syncVault(vault, (done, total, path) => {
+			this.plugin.setStatus(`Brain: indexing (${done}/${total})…`);
+			this.updateProgress({
+				isIndexing: true,
+				done,
+				total,
+				currentFile: path,
+			});
+		});
+		await this.persist();
+		return result;
 	}
 
 	/** Notes related to the given (usually active) note. */
@@ -496,38 +517,23 @@ export class Brain {
 		}
 
 		// 2. Stage 2: Cross-encoder reranking (if enabled and loaded)
+		let rankedCandidates = candidates;
+		let stage2Ms: number | null = null;
 		if (this.reranker && this.plugin.settings.rerankerEnabled !== false) {
 			const vault = new ObsidianVaultSource(this.plugin.app);
-			const topK = RETRIEVAL_CONFIG.stage1CandidatePoolSize;
 			const tStage2Start = performance.now();
-			const reranked = await rerankCandidateChunks({
+			rankedCandidates = await rerankCandidateChunks({
 				candidates,
 				fileReader: vault,
 				reranker: this.reranker,
-				topK,
+				topK: RETRIEVAL_CONFIG.stage1CandidatePoolSize,
 				logger: this.logger,
 			});
-			const stage2Ms = performance.now() - tStage2Start;
-
-			const tAssembleStart = performance.now();
-			const notes = relatedNotes(reranked, {
-				excludeFile: filePath,
-				maxNotes: this.plugin.settings.maxRelatedNotes,
-				maxChunksPerNote: this.plugin.settings.maxChunksPerNote,
-			});
-			const assembleMs = performance.now() - tAssembleStart;
-			const totalMs = performance.now() - tTotalStart;
-
-			this.logger.debug(
-				`[retrieval] Finished in ${totalMs.toFixed(1)}ms | ` +
-					`stage1=${stage1Ms.toFixed(1)}ms stage2=${stage2Ms.toFixed(1)}ms assemble=${assembleMs.toFixed(1)}ms -> returned ${notes.length} related notes`,
-			);
-			await this.flushLog();
-			return notes;
+			stage2Ms = performance.now() - tStage2Start;
 		}
 
 		const tAssembleStart = performance.now();
-		const notes = relatedNotes(candidates, {
+		const notes = relatedNotes(rankedCandidates, {
 			excludeFile: filePath,
 			maxNotes: this.plugin.settings.maxRelatedNotes,
 			maxChunksPerNote: this.plugin.settings.maxChunksPerNote,
@@ -535,9 +541,13 @@ export class Brain {
 		const assembleMs = performance.now() - tAssembleStart;
 		const totalMs = performance.now() - tTotalStart;
 
+		const stageSummary =
+			stage2Ms !== null
+				? `stage1=${stage1Ms.toFixed(1)}ms stage2=${stage2Ms.toFixed(1)}ms assemble=${assembleMs.toFixed(1)}ms`
+				: `stage1=${stage1Ms.toFixed(1)}ms assemble=${assembleMs.toFixed(1)}ms`;
+		const label = stage2Ms !== null ? 'Finished' : 'Finished (vector-only)';
 		this.logger.debug(
-			`[retrieval] Finished (vector-only) in ${totalMs.toFixed(1)}ms | ` +
-				`stage1=${stage1Ms.toFixed(1)}ms assemble=${assembleMs.toFixed(1)}ms -> returned ${notes.length} related notes`,
+			`[retrieval] ${label} in ${totalMs.toFixed(1)}ms | ${stageSummary} -> returned ${notes.length} related notes`,
 		);
 		await this.flushLog();
 		return notes;
@@ -625,8 +635,7 @@ export class Brain {
 			this.logger.info('log file sink attached at ' + path);
 		} catch (e) {
 			// File logging is best-effort; console logging still works.
-			this.logger.info('log file sink failed to attach');
-			console.warn(`${pluginName()}: brain.log unavailable`, e);
+			this.logger.warn('log file sink failed to attach', { kind: 'log-file' }, e);
 		}
 	}
 
@@ -760,7 +769,7 @@ export class Brain {
 			this.plugin.setStatus('');
 		} catch (e) {
 			this.plugin.setStatus('');
-			this.logger.warn(`failed to index ${path}`, e);
+			this.logger.warn(`failed to index ${path}`, { kind: 'index' }, e);
 		}
 	}
 
