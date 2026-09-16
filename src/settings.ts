@@ -247,13 +247,10 @@ export class ConstellationsSettingTab extends PluginSettingTab {
 					const label = spec.displayName || id;
 					dropdown.addOption(id, label);
 				}
-				let selected =
+				const selected =
 					RERANKER_MODELS[this.plugin.settings.rerankerModel]
 						? this.plugin.settings.rerankerModel
 						: DEFAULT_RERANKER.modelId;
-				if (selected === 'cross-encoder/ettin-reranker-150m-v1') {
-					selected = DEFAULT_RERANKER.modelId;
-				}
 				dropdown.setValue(selected).setDisabled(true);
 				rerankerDropdown = dropdown.selectEl;
 			});

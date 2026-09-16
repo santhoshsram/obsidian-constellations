@@ -133,6 +133,14 @@ export default class ConstellationsPlugin extends Plugin {
 			DEFAULT_SETTINGS,
 			(await this.loadData()) as Partial<ConstellationsSettings>,
 		);
+		this.migrateSettings();
+	}
+
+	/** One-time migrations for settings values retired after being saved to disk. */
+	private migrateSettings() {
+		if (this.settings.rerankerModel === 'cross-encoder/ettin-reranker-150m-v1') {
+			this.settings.rerankerModel = DEFAULT_SETTINGS.rerankerModel;
+		}
 	}
 
 	async saveSettings() {
