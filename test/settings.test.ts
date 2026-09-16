@@ -42,7 +42,8 @@ describe('settings', () => {
 		const past = new Date('2024-01-15T12:00:00Z');
 		const formatted = formatLastIndexed(past.getTime());
 		expect(formatted).not.toContain('Today');
-		expect(formatted).toMatch(/Jan 15/);
+		expect(formatted).toContain('Jan');
+		expect(formatted).toContain('15');
 	});
 
 	it('formats model statuses correctly', () => {

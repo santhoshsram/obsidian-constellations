@@ -69,12 +69,6 @@ export function pickLargestFiles(files: SizedFile[], n: number): SizedFile[] {
  */
 const CHARS_PER_TOKEN = 3;
 
-/** Options accepted by FeatureExtractionPipeline._call (others are ignored). */
-const PIPE_OPTIONS: Record<string, unknown> = {
-	pooling: 'mean',
-	normalize: true,
-};
-
 /** Truncate a batch of texts to fit within the model's ONNX sequence limit. */
 function truncateBatch(texts: string[], maxLength: number): string[] {
 	const charBudget = maxLength * CHARS_PER_TOKEN;

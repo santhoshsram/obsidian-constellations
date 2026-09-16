@@ -246,6 +246,7 @@ describe('RelatedNotesView', () => {
 		const mockEditor = {
 			setCursor: vi.fn(),
 			scrollIntoView: vi.fn(),
+			getCursor: vi.fn().mockReturnValue({ line: 0, ch: 0 }),
 		};
 		mockGetActiveViewOfType.mockReturnValue({
 			editor: mockEditor,
@@ -299,6 +300,7 @@ describe('RelatedNotesView', () => {
 		const mockEditor = {
 			setCursor: vi.fn(),
 			scrollIntoView: vi.fn(),
+			getCursor: vi.fn().mockReturnValue({ line: 0, ch: 0 }),
 		};
 		mockGetActiveViewOfType.mockReturnValue({
 			editor: mockEditor,
@@ -346,6 +348,7 @@ describe('RelatedNotesView', () => {
 		const mockEditor = {
 			setCursor: vi.fn(),
 			scrollIntoView: vi.fn(),
+			getCursor: vi.fn().mockReturnValue({ line: 0, ch: 0 }),
 		};
 		mockGetActiveViewOfType.mockReturnValue({
 			editor: mockEditor,

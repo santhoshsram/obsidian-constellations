@@ -3,7 +3,6 @@ import {
 	truncateSection,
 	halvedByDelimiter,
 	forceSplitOversizedBlock,
-	MAX_RECURSION,
 } from '../../src/chunking/split';
 import type { TokenCounter } from '../../src/chunking/tokens';
 import { HeuristicTokenCounter } from '../../src/chunking/tokens';
