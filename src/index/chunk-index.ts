@@ -4,8 +4,10 @@
  * Chunk identity is content-addressed: `id = sha1(text)`. An embedding
  * cache (id → vector) lets unchanged chunks keep their embeddings across
  * edits, renames, and duplicate content in other files — only genuinely
- * new text is ever embedded. The cache is rebuilt from active chunks on
- * load/compact, bounding its growth.
+ * new text is ever embedded. removeFile() deliberately leaves cache
+ * entries in place (the same content may reappear elsewhere); the cache
+ * is instead pruned to active chunk ids on snapshot() (persistence) and
+ * rebuilt from active chunks on loadSnapshot(), bounding its growth.
  */
 
 import { sha1Hex } from './hasher';
@@ -191,16 +193,30 @@ export class ChunkIndex {
 	/**
 	 * Active chunks (ascending row order) with their vectors, vectorRow
 	 * remapped dense from 0. Used to persist the index compacted.
+	 *
+	 * Also prunes the embedding cache to active chunk ids: tombstoning a
+	 * row in removeFile() intentionally leaves the cache entry (identical
+	 * content in another file, or a later re-add, should still hit it),
+	 * so without this the cache would grow unboundedly across a long
+	 * session's edits. Snapshotting is the natural point to prune since
+	 * it already computes the full active-id set.
 	 */
 	snapshot(): { records: ChunkRecord[]; vectors: Float32Array[] } {
 		const records: ChunkRecord[] = [];
 		const vectors: Float32Array[] = [];
+		const activeIds = new Set<string>();
 		for (const row of this.store.activeRows()) {
 			const record = this.records[row];
 			const vector = this.store.get(row);
 			if (record && vector) {
 				records.push({ ...record, vectorRow: records.length });
 				vectors.push(vector);
+				activeIds.add(record.id);
+			}
+		}
+		for (const id of this.embeddings.keys()) {
+			if (!activeIds.has(id)) {
+				this.embeddings.delete(id);
 			}
 		}
 		return { records, vectors };
