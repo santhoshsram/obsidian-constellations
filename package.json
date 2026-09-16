@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-constellations",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Local-first semantic constellations for Obsidian: related notes, interactive star graph, and concept search — all on-device.",
 	"main": "main.js",
 	"type": "module",
