@@ -181,7 +181,7 @@ describe('ContextGraphModal', () => {
 	});
 
 	it('toggles is-loading class on search container while query is executing', async () => {
-		let resolveQuery!: (data: any) => void;
+		let resolveQuery!: (data: GraphData) => void;
 		mockGetGraphData.mockReturnValue(new Promise((res) => { resolveQuery = res; }));
 
 		modal.open();

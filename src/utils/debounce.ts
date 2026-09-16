@@ -11,19 +11,19 @@ export function debounce<A extends unknown[]>(
 	fn: (...args: A) => void,
 	waitMs: number,
 ): DebouncedFn<A> {
-	let timer: ReturnType<typeof setTimeout> | null = null;
+	let timer: number | null = null;
 	const debounced = (...args: A) => {
 		if (timer !== null) {
-			clearTimeout(timer);
+			window.clearTimeout(timer);
 		}
-		timer = setTimeout(() => {
+		timer = window.setTimeout(() => {
 			timer = null;
 			fn(...args);
 		}, waitMs);
 	};
 	debounced.cancel = () => {
 		if (timer !== null) {
-			clearTimeout(timer);
+			window.clearTimeout(timer);
 			timer = null;
 		}
 	};

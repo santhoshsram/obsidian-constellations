@@ -7,6 +7,7 @@ import { TFile, WorkspaceLeaf } from 'obsidian';
 import type ConstellationsPlugin from '../../src/main';
 import type { BrainProgress } from '../../src/brain';
 import type { RelatedNote } from '../../src/search/related';
+import type { GraphData } from '../../src/search/graph';
 
 describe('RelatedNotesView', () => {
 	let mockLeaf: WorkspaceLeaf;
@@ -529,7 +530,7 @@ describe('RelatedNotesView', () => {
 
 	it('instantly switches toggle button highlight and shows in-tab loading state on switch', async () => {
 		// Make getGraphData hang until resolved
-		let resolveGraph!: (data: any) => void;
+		let resolveGraph!: (data: GraphData) => void;
 		mockGetGraphData.mockReturnValue(new Promise((res) => { resolveGraph = res; }));
 
 		const view = new RelatedNotesView(mockLeaf, mockPlugin);

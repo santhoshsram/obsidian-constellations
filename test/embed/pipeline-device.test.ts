@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
+// Side-effect import: shims `window` onto globalThis so window.caches
+// resolves under Node's test environment, matching the Electron renderer.
+import 'obsidian';
 
 describe('isModelCached', () => {
 	it('returns false when caches global is undefined', async () => {
@@ -13,8 +16,8 @@ describe('isModelCached', () => {
 				{ url: 'https://huggingface.co/onnx-community/model-a/model.onnx' },
 			]),
 		};
-		const globalObj = globalThis as { caches?: unknown };
-		globalObj.caches = {
+		const windowObj = window as unknown as { caches?: unknown };
+		windowObj.caches = {
 			open: vi.fn(async () => mockCache),
 		};
 
@@ -26,7 +29,7 @@ describe('isModelCached', () => {
 			const notFound = await isModelCached('model-b');
 			expect(notFound).toBe(false);
 		} finally {
-			delete globalObj.caches;
+			delete windowObj.caches;
 		}
 	});
 
@@ -37,8 +40,8 @@ describe('isModelCached', () => {
 				{ url: 'https://huggingface.co/onnx-community/model-a/config.json' },
 			]),
 		};
-		const globalObj = globalThis as { caches?: unknown };
-		globalObj.caches = {
+		const windowObj = window as unknown as { caches?: unknown };
+		windowObj.caches = {
 			open: vi.fn(async () => mockCache),
 		};
 
@@ -47,7 +50,7 @@ describe('isModelCached', () => {
 			const result = await isModelCached('model-a');
 			expect(result).toBe(false);
 		} finally {
-			delete globalObj.caches;
+			delete windowObj.caches;
 		}
 	});
 });

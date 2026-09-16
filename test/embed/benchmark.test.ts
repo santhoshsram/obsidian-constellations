@@ -4,12 +4,15 @@ import {
 	collectSampleTexts,
 	BenchmarkSample,
 } from '../../src/embed/benchmark';
+// Side-effect import: shims `window` onto globalThis so window.setTimeout
+// resolves under Node's test environment, matching the Electron renderer.
+import 'obsidian';
 
 /** Controlled fake pipeline we can time. */
 function stubCreatePipeline(delayMs: number) {
 	return async () => {
 		const pipe = async (texts: string[]) => {
-			await new Promise((r) => setTimeout(r, delayMs));
+			await new Promise((r) => window.setTimeout(r, delayMs));
 			const data = new Float32Array(texts.length * 2);
 			return { data, dims: [texts.length, 2] };
 		};

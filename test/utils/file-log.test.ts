@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { BufferedLogFile } from '../../src/utils/file-log';
 import type { LogTextStore } from '../../src/utils/file-log';
+// Side-effect import: shims `window` onto globalThis so window.setTimeout
+// resolves under Node's test environment, matching the Electron renderer.
+import 'obsidian';
 
 class FakeStore implements LogTextStore {
 	content = '';

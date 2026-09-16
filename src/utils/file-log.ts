@@ -14,7 +14,7 @@ export interface LogTextStore {
 
 export class BufferedLogFile {
 	private lines: string[] = [];
-	private timer: ReturnType<typeof setTimeout> | null = null;
+	private timer: number | null = null;
 
 	constructor(
 		private store: LogTextStore,
@@ -46,9 +46,9 @@ export class BufferedLogFile {
 			this.lines.shift();
 		}
 		if (this.timer) {
-			clearTimeout(this.timer);
+			window.clearTimeout(this.timer);
 		}
-		this.timer = setTimeout(() => {
+		this.timer = window.setTimeout(() => {
 			this.timer = null;
 			void this.flush();
 		}, this.flushMs);
@@ -57,7 +57,7 @@ export class BufferedLogFile {
 	/** Write all buffered lines (plus pre-existing content) to the file. */
 	async flush(): Promise<void> {
 		if (this.timer) {
-			clearTimeout(this.timer);
+			window.clearTimeout(this.timer);
 			this.timer = null;
 		}
 		if (this.lines.length === 0) {
@@ -69,7 +69,7 @@ export class BufferedLogFile {
 	/** Clear all in-memory lines and overwrite the file store with empty content. */
 	async clear(): Promise<void> {
 		if (this.timer) {
-			clearTimeout(this.timer);
+			window.clearTimeout(this.timer);
 			this.timer = null;
 		}
 		this.lines = [];
@@ -79,7 +79,7 @@ export class BufferedLogFile {
 	/** Cancel any pending flush (e.g. on plugin unload without save). */
 	dispose(): void {
 		if (this.timer) {
-			clearTimeout(this.timer);
+			window.clearTimeout(this.timer);
 			this.timer = null;
 		}
 	}

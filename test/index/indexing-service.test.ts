@@ -6,6 +6,9 @@ import { ChunkIndex } from '../../src/index/chunk-index';
 import { BruteForceVectorStore } from '../../src/index/vector-store';
 import { HeuristicTokenCounter } from '../../src/chunking/tokens';
 import { DEFAULT_MODEL } from '../../src/embed/models';
+// Side-effect import: shims `window` onto globalThis so window.setTimeout
+// resolves under Node's test environment, matching the Electron renderer.
+import 'obsidian';
 
 /** In-memory vault fake. */
 class FakeVault implements VaultSource {
@@ -177,7 +180,7 @@ describe('IndexingService', () => {
 				if (activeCalls > maxActiveCalls) {
 					maxActiveCalls = activeCalls;
 				}
-				await new Promise((resolve) => setTimeout(resolve, 20));
+				await new Promise((resolve) => window.setTimeout(resolve, 20));
 				activeCalls--;
 				return texts.map((_, idx) => new Float32Array([idx, 0]));
 			},

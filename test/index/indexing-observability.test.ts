@@ -8,6 +8,9 @@ import { ChunkIndex } from '../../src/index/chunk-index';
 import { BruteForceVectorStore } from '../../src/index/vector-store';
 import { HeuristicTokenCounter } from '../../src/chunking/tokens';
 import { DEFAULT_MODEL } from '../../src/embed/models';
+// Side-effect import: shims `window` onto globalThis so window.setTimeout
+// resolves under Node's test environment, matching the Electron renderer.
+import 'obsidian';
 
 const LONG = 'content long enough to survive the minimum section length filter.';
 
@@ -28,7 +31,7 @@ function slowEmbedder(delayMs: number) {
 	return {
 		dimensions: 2,
 		async embedDocuments(texts: string[]): Promise<Float32Array[]> {
-			await new Promise((r) => setTimeout(r, delayMs));
+			await new Promise((r) => window.setTimeout(r, delayMs));
 			return texts.map(() => new Float32Array([1, 0]));
 		},
 		async embedQuery(): Promise<Float32Array> {
