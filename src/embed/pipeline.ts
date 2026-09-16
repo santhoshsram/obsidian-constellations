@@ -26,7 +26,7 @@
 // the symbol) before we delete it below, all before transformers.js runs.
 import 'onnxruntime-web/webgpu';
 
-delete (globalThis as Record<symbol, unknown>)[Symbol.for('onnxruntime')];
+delete (window as unknown as Record<symbol, unknown>)[Symbol.for('onnxruntime')];
 
 import type { EmbeddingModelSpec, RerankerModelSpec } from './models';
 import type { RerankPairsFn, TextPair } from './reranker';

@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+// Side-effect import: shims `window` onto globalThis before pipeline.ts's
+// module-scope delete on `window`, matching the Electron renderer.
+import 'obsidian';
 import { buildFallbackChain } from '../../src/embed/pipeline';
 import type { EmbeddingModelSpec } from '../../src/embed/models';
 
