@@ -180,7 +180,7 @@ export class ContextGraphModal extends Modal {
 
 	private async applySearchQuery(query: string): Promise<void> {
 		const requestId = ++this.currentSearchRequestId;
-		this.searchWrapper?.addClass?.('is-loading');
+		this.searchWrapper.addClass('is-loading');
 
 		try {
 			if (!query) {
@@ -200,7 +200,7 @@ export class ContextGraphModal extends Modal {
 			await this.reseed({ type: 'query', query }, requestId);
 		} finally {
 			if (requestId === this.currentSearchRequestId) {
-				this.searchWrapper?.removeClass?.('is-loading');
+				this.searchWrapper.removeClass('is-loading');
 			}
 		}
 	}

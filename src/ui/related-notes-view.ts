@@ -259,7 +259,7 @@ export class RelatedNotesView extends ItemView {
 			this.renderLoading('Finding related notes…');
 		}
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-		const cursorLine = activeView?.editor?.getCursor?.()?.line;
+		const cursorLine = activeView?.editor?.getCursor().line;
 		const cursorHeading =
 			typeof cursorLine === 'number'
 				? this.getActiveHeadingAtCursor(file, cursorLine)
@@ -392,12 +392,10 @@ export class RelatedNotesView extends ItemView {
 				this.app.workspace.getActiveViewOfType(MarkdownView);
 			if (activeView?.editor) {
 				activeView.editor.setCursor({ line, ch: 0 });
-				if (typeof activeView.editor.scrollIntoView === 'function') {
-					activeView.editor.scrollIntoView(
-						{ from: { line, ch: 0 }, to: { line, ch: 0 } },
-						true,
-					);
-				}
+				activeView.editor.scrollIntoView(
+					{ from: { line, ch: 0 }, to: { line, ch: 0 } },
+					true,
+				);
 			}
 		}
 	}

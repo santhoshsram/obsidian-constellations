@@ -1,7 +1,6 @@
 /** Pointer/wheel input handling and tooltip positioning for the context graph canvas. */
 
 import type { GraphNode } from '../../search/graph';
-import { DEFAULT_CANVAS_WIDTH, DEFAULT_CANVAS_HEIGHT } from './graph-constants';
 
 const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 4.0;
@@ -59,12 +58,7 @@ export function findNodeAt(
 	canvas: HTMLCanvasElement,
 	transform: ViewTransform,
 ): GraphNode | null {
-	const rect = canvas.getBoundingClientRect?.() ?? {
-		left: 0,
-		top: 0,
-		width: DEFAULT_CANVAS_WIDTH,
-		height: DEFAULT_CANVAS_HEIGHT,
-	};
+	const rect = canvas.getBoundingClientRect();
 	const world = clientToWorld(clientX, clientY, rect, transform);
 
 	for (let i = nodes.length - 1; i >= 0; i--) {
@@ -91,12 +85,7 @@ export function positionTooltip(
 	clientX: number,
 	clientY: number,
 ): void {
-	const rect = container.getBoundingClientRect?.() ?? {
-		left: 0,
-		top: 0,
-		width: DEFAULT_CANVAS_WIDTH,
-		height: DEFAULT_CANVAS_HEIGHT,
-	};
+	const rect = container.getBoundingClientRect();
 	const localX = clientX - rect.left;
 	const localY = clientY - rect.top;
 
