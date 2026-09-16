@@ -152,7 +152,17 @@ export class ConstellationsSettingTab extends PluginSettingTab {
 		return [
 			{
 				type: 'group',
-				items: [this.vaultIndexingDefinition(), this.debugLoggingDefinition()],
+				items: [
+					{
+						name: 'Open related notes in new tab',
+						desc: 'Open related notes in a new tab instead of the current tab.',
+						control: { type: 'toggle', key: 'openInNewTab' },
+					},
+				],
+			},
+			{
+				type: 'group',
+				items: [this.vaultIndexingDefinition()],
 			},
 			{
 				type: 'group',
@@ -189,13 +199,7 @@ export class ConstellationsSettingTab extends PluginSettingTab {
 			},
 			{
 				type: 'group',
-				items: [
-					{
-						name: 'Open related notes in new tab',
-						desc: 'Open related notes in a new tab instead of the current tab.',
-						control: { type: 'toggle', key: 'openInNewTab' },
-					},
-				],
+				items: [this.debugLoggingDefinition()],
 			},
 		];
 	}
