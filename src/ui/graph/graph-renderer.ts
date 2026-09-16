@@ -38,6 +38,9 @@ import {
 	OPTIMISTIC_RIPPLE_CYCLE_MS,
 	OPTIMISTIC_RIPPLE_MAX_DIST,
 	OPTIMISTIC_RIPPLE_PHASES,
+	OPTIMISTIC_RIPPLE_LINE_WIDTH,
+	OPTIMISTIC_RIPPLE_ALPHA_MAX,
+	DEFAULT_SIMILARITY,
 } from './graph-constants';
 
 function getEndpointId(endpoint: string | GraphNode): string {
@@ -131,7 +134,7 @@ function drawEdge(
 	const isHoveredEdge = Boolean(hovered && connectedEdgeIds.has(edge.id));
 	const isSeedEdge = source.isSeed || target.isSeed;
 	const isSecondary = Boolean(edge.isSecondary || !isSeedEdge);
-	const normScore = normalizeSimilarity(edge.similarity ?? 0.6);
+	const normScore = normalizeSimilarity(edge.similarity ?? DEFAULT_SIMILARITY);
 
 	let lineWidth: number;
 	let strokeStyle: string;
@@ -253,12 +256,12 @@ function drawOptimisticRipples(
 
 	ctx.save();
 	ctx.strokeStyle = theme.accentColor;
-	ctx.lineWidth = 1.5;
+	ctx.lineWidth = OPTIMISTIC_RIPPLE_LINE_WIDTH;
 
 	for (const phase of OPTIMISTIC_RIPPLE_PHASES) {
 		const progress = ((elapsedMs + phase * OPTIMISTIC_RIPPLE_CYCLE_MS) % OPTIMISTIC_RIPPLE_CYCLE_MS) / OPTIMISTIC_RIPPLE_CYCLE_MS;
 		const rippleRadius = radius + 2 + progress * OPTIMISTIC_RIPPLE_MAX_DIST;
-		const rippleAlpha = (1 - progress) * 0.65;
+		const rippleAlpha = (1 - progress) * OPTIMISTIC_RIPPLE_ALPHA_MAX;
 
 		ctx.beginPath();
 		ctx.arc(node.x!, node.y!, rippleRadius, 0, Math.PI * 2);

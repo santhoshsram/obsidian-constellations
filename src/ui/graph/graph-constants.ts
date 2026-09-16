@@ -46,6 +46,11 @@ export const DEFAULT_CHARGE = -220;
 
 export const RADIAL_STRENGTH_HOP1 = 0.95;
 
+/** Simulation reheat strength on setData/resize (full) vs. drag-start (partial, less jitter). */
+export const SIMULATION_ALPHA_RESEED = 0.8;
+export const SIMULATION_ALPHA_DRAG = 0.3;
+export const SIMULATION_ALPHA_RESIZE = 0.3;
+
 /** Angular-clearance force: minimum spoke separation (~22deg) and push magnitude. */
 export const ANGULAR_MIN_SEPARATION_RAD = 0.38;
 export const ANGULAR_FORCE_MAGNITUDE = 80;
@@ -59,9 +64,17 @@ export const COLLIDE_ITERATIONS = 4;
 export const SATELLITE_ANGLE_SPREAD_RAD = 0.35;
 export const SATELLITE_DISTANCE = 58;
 
+/** Similarity fallback when a node/edge carries no score (mid-range, deliberately non-committal). */
+export const DEFAULT_SIMILARITY = 0.6;
+
+/** Random scatter spread (pre-scale) for a node with no computed position. */
+export const RANDOM_SCATTER_SPREAD = 100;
+
 export const OPTIMISTIC_RIPPLE_CYCLE_MS = 1200;
 export const OPTIMISTIC_RIPPLE_MAX_DIST = 20;
 export const OPTIMISTIC_RIPPLE_PHASES = [0, 0.5];
+export const OPTIMISTIC_RIPPLE_LINE_WIDTH = 1.5;
+export const OPTIMISTIC_RIPPLE_ALPHA_MAX = 0.65;
 
 /** Edge rendering alpha values. */
 export const EDGE_ALPHA_SECONDARY_HOVERED = 0.5;

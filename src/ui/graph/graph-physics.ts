@@ -11,6 +11,11 @@ import {
 import type { GraphNode, GraphEdge } from '../../search/graph';
 import {
 	normalizeSimilarity,
+	DEFAULT_SIMILARITY,
+	NODE_RADIUS_HOP2_DEFAULT,
+	NODE_RADIUS_DEFAULT,
+	DEFAULT_CANVAS_WIDTH,
+	DEFAULT_CANVAS_HEIGHT,
 	PEER_LINK_DIST_MIN,
 	PEER_LINK_DIST_MAX,
 	SATELLITE_LINK_DIST_MIN,
@@ -36,13 +41,13 @@ import {
 /** Radial target distance from the seed for a hop-1 node, by normalized similarity. */
 export function radialDistanceForNode(node: GraphNode, scale: number): number {
 	if (node.isSeed || node.hop > 1) return 0;
-	const norm = normalizeSimilarity(node.similarity ?? 0.6);
+	const norm = normalizeSimilarity(node.similarity ?? DEFAULT_SIMILARITY);
 	return RADIAL_DIST_MIN * scale + (1 - norm) * (RADIAL_DIST_MAX - RADIAL_DIST_MIN) * scale;
 }
 
 /** Edge link distance, by edge kind, scaled to normalized similarity. */
 export function linkDistanceForEdge(edge: GraphEdge, scale: number): number {
-	const normScore = normalizeSimilarity(edge.similarity ?? 0.6);
+	const normScore = normalizeSimilarity(edge.similarity ?? DEFAULT_SIMILARITY);
 
 	if (edge.kind === 'peer') {
 		return PEER_LINK_DIST_MIN * scale + (1 - normScore) * (PEER_LINK_DIST_MAX - PEER_LINK_DIST_MIN) * scale;
@@ -78,7 +83,7 @@ export function radialStrengthForNode(node: GraphNode): number {
 
 export function collideRadiusForNode(node: GraphNode, scale: number): number {
 	const padding = node.hop > 1 ? COLLIDE_PADDING_HOP2 : COLLIDE_PADDING_DEFAULT;
-	return (node.radius ?? (node.hop > 1 ? 4.5 : 8)) + padding * scale;
+	return (node.radius ?? (node.hop > 1 ? NODE_RADIUS_HOP2_DEFAULT : NODE_RADIUS_DEFAULT)) + padding * scale;
 }
 
 /**
@@ -122,8 +127,8 @@ function createAngularForce(
 	return (alpha: number) => {
 		const nodes = nodesRef();
 		const seed = nodes.find((n) => n.isSeed);
-		const cx = seed?.x ?? centerForce.x?.() ?? 400;
-		const cy = seed?.y ?? centerForce.y?.() ?? 300;
+		const cx = seed?.x ?? centerForce.x?.() ?? DEFAULT_CANVAS_WIDTH / 2;
+		const cy = seed?.y ?? centerForce.y?.() ?? DEFAULT_CANVAS_HEIGHT / 2;
 		const h1Nodes = nodes.filter((n) => n.hop === 1 && n.x !== undefined && n.y !== undefined);
 		if (h1Nodes.length < 2) return;
 

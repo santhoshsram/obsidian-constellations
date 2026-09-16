@@ -32,6 +32,9 @@ import {
 	RESIZE_SCALE_MIN,
 	RESIZE_SCALE_MAX,
 	RESIZE_SCALE_REFERENCE_DIM,
+	SIMULATION_ALPHA_RESEED,
+	SIMULATION_ALPHA_DRAG,
+	SIMULATION_ALPHA_RESIZE,
 } from './graph-constants';
 import { updateForces, radialDistanceForNode } from './graph-physics';
 import { computeNodePositions, placeNodes, type ExistingPosition } from './graph-layout';
@@ -275,7 +278,7 @@ export class ContextGraphEngine {
 
 		this.simulation.nodes(this.nodes);
 		this.linkForce.links(this.edges);
-		this.simulation.alpha(0.8).restart();
+		this.simulation.alpha(SIMULATION_ALPHA_RESEED).restart();
 		this.requestRender();
 	}
 
@@ -324,7 +327,7 @@ export class ContextGraphEngine {
 			this.draggedNode = node;
 			node.fx = node.x;
 			node.fy = node.y;
-			this.simulation.alphaTarget(0.3).restart();
+			this.simulation.alphaTarget(SIMULATION_ALPHA_DRAG).restart();
 		} else {
 			this.isDraggingCanvas = true;
 			this.canvas.addClass('is-grabbing');
@@ -432,7 +435,7 @@ export class ContextGraphEngine {
 		}
 
 		this.applyForces(scale);
-		this.simulation.alpha(0.3).restart();
+		this.simulation.alpha(SIMULATION_ALPHA_RESIZE).restart();
 		this.requestRender();
 	}
 

@@ -7,6 +7,8 @@ import {
 	RADIAL_DIST_MAX,
 	SATELLITE_ANGLE_SPREAD_RAD,
 	SATELLITE_DISTANCE,
+	DEFAULT_SIMILARITY,
+	RANDOM_SCATTER_SPREAD,
 } from './graph-constants';
 
 function getEndpointId(endpoint: string | GraphNode): string {
@@ -118,7 +120,7 @@ export function computeNodePositions(
 			nodePosMap.set(h1.id, { x: existing.x, y: existing.y, angle });
 			return;
 		}
-		const norm = normalizeSimilarity(h1.similarity ?? 0.6);
+		const norm = normalizeSimilarity(h1.similarity ?? DEFAULT_SIMILARITY);
 		const angle = h1Angles.get(h1.id) ?? 0;
 		const r = RADIAL_DIST_MIN * scale + (1 - norm) * (RADIAL_DIST_MAX - RADIAL_DIST_MIN) * scale;
 		nodePosMap.set(h1.id, {
@@ -185,8 +187,8 @@ export function placeNodes(
 
 		return {
 			...n,
-			x: cx + (Math.random() - 0.5) * 100 * scale,
-			y: cy + (Math.random() - 0.5) * 100 * scale,
+			x: cx + (Math.random() - 0.5) * RANDOM_SCATTER_SPREAD * scale,
+			y: cy + (Math.random() - 0.5) * RANDOM_SCATTER_SPREAD * scale,
 		};
 	});
 }
