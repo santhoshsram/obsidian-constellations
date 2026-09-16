@@ -46,24 +46,13 @@ export interface DeviceConfig {
 	dtype?: string;
 }
 
+const WASM_NUM_THREADS = 4;
+
 /** Minimal shape of a transformers.js feature-extraction pipeline. */
 export type EmbeddingPipelineFn = (
 	texts: string[],
 	options?: Record<string, unknown>,
 ) => Promise<{ data: Float32Array | number[]; dims: number[] }>;
-
-/** Ordered fallback device configurations, WebGPU-favouring. */
-export function selectDeviceConfig(
-	webgpuAvailable: boolean,
-): { config: DeviceConfig; fallbacks: DeviceConfig[] } {
-	const all: DeviceConfig[] = [
-		{ device: 'webgpu', dtype: 'q8' },
-		{ dtype: 'q8' },
-		{},
-	];
-	const fallbacks = webgpuAvailable ? all : all.slice(1);
-	return { config: fallbacks[0] ?? {}, fallbacks };
-}
 
 /**
  * Build the device fallback chain for a specific model from its shipped
@@ -119,7 +108,7 @@ async function loadTransformers(): Promise<typeof import('@huggingface/transform
 	env.useBrowserCache = true;
 	const wasm = env.backends.onnx.wasm;
 	if (wasm) {
-		wasm.numThreads = 4;
+		wasm.numThreads = WASM_NUM_THREADS;
 	}
 	return transformers;
 }
@@ -270,8 +259,9 @@ export async function isModelCached(modelId: string): Promise<boolean> {
 }
 
 /**
- * Extract an ArrayLike of numbers from model logits, handling ONNX WebGPU tensors,
- * CPU tensors, direct TypedArrays, and nested lists.
+ * Extract an ArrayLike of numbers from model logits. transformers.js'
+ * `Tensor` always exposes a `.data` getter (see its type definition);
+ * the raw-array case covers logits already unwrapped by a caller or test.
  */
 export async function extractLogitsAsync(logits: unknown): Promise<ArrayLike<number>> {
 	if (!logits) {
@@ -279,81 +269,13 @@ export async function extractLogitsAsync(logits: unknown): Promise<ArrayLike<num
 		throw new Error('Model outputs missing logits');
 	}
 
-	// 1. Direct array or TypedArray
 	if (Array.isArray(logits) || ArrayBuffer.isView(logits)) {
 		return logits as ArrayLike<number>;
 	}
 
 	const obj = logits as Record<string, unknown>;
-
-	// 2. If it has getData() (ONNX WebGPU tensor needing download to CPU)
-	if (typeof obj.getData === 'function') {
-		try {
-			const gpuData = await (obj.getData as () => Promise<unknown>)();
-			if (Array.isArray(gpuData) || ArrayBuffer.isView(gpuData)) {
-				return gpuData as ArrayLike<number>;
-			}
-		} catch (e) {
-			console.debug('logits.getData() threw:', e);
-		}
-	}
-
-	// 3. If ort_tensor has getData()
-	if (
-		obj.ort_tensor &&
-		typeof (obj.ort_tensor as Record<string, unknown>).getData === 'function'
-	) {
-		try {
-			const gpuData = await (
-				(obj.ort_tensor as Record<string, unknown>).getData as () => Promise<unknown>
-			)();
-			if (Array.isArray(gpuData) || ArrayBuffer.isView(gpuData)) {
-				return gpuData as ArrayLike<number>;
-			}
-		} catch (e) {
-			console.debug('ort_tensor.getData() threw:', e);
-		}
-	}
-
-	// 4. If it has .tolist()
-	if (typeof obj.tolist === 'function') {
-		try {
-			const list = (obj.tolist as () => unknown)();
-			if (Array.isArray(list)) {
-				return list.flat(Infinity) as ArrayLike<number>;
-			}
-		} catch (e) {
-			console.debug('logits.tolist() threw:', e);
-		}
-	}
-
-	// 5. Check .data property
-	try {
-		if (obj.data && (Array.isArray(obj.data) || ArrayBuffer.isView(obj.data))) {
-			return obj.data as ArrayLike<number>;
-		}
-	} catch (e) {
-		console.debug('Accessing logits.data threw:', e);
-	}
-
-	// 6. Check .cpuData property
-	if (obj.cpuData && (Array.isArray(obj.cpuData) || ArrayBuffer.isView(obj.cpuData))) {
-		return obj.cpuData as ArrayLike<number>;
-	}
-
-	// 7. Check if it has an ort_tensor with data / cpuData
-	if (obj.ort_tensor) {
-		const ort = obj.ort_tensor as Record<string, unknown>;
-		try {
-			if (ort.data && (Array.isArray(ort.data) || ArrayBuffer.isView(ort.data))) {
-				return ort.data as ArrayLike<number>;
-			}
-		} catch {
-			// ignore
-		}
-		if (ort.cpuData && (Array.isArray(ort.cpuData) || ArrayBuffer.isView(ort.cpuData))) {
-			return ort.cpuData as ArrayLike<number>;
-		}
+	if (Array.isArray(obj.data) || ArrayBuffer.isView(obj.data)) {
+		return obj.data as ArrayLike<number>;
 	}
 
 	const proto = Object.getPrototypeOf(obj) as object | null;
