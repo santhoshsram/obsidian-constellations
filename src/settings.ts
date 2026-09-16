@@ -1,4 +1,5 @@
 import { App, ButtonComponent, PluginSettingTab, Setting } from 'obsidian';
+import type { SettingDefinition, SettingDefinitionItem } from 'obsidian';
 import type ConstellationsPlugin from './main';
 import type { BrainProgress } from './brain';
 import {
@@ -126,154 +127,103 @@ export function formatLastIndexed(
 
 export class ConstellationsSettingTab extends PluginSettingTab {
 	plugin: ConstellationsPlugin;
-	private unsubscribeProgress?: () => void;
 
 	constructor(app: App, plugin: ConstellationsPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
 
-	hide(): void {
-		this.unsubscribeProgress?.();
-		this.unsubscribeProgress = undefined;
+	/**
+	 * embeddingModel and debugLogging trigger side effects beyond persistence
+	 * (reindex, logger reconfiguration) that the declarative control schema
+	 * has no hook for, so persistence is intercepted here instead.
+	 */
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		await super.setControlValue(key, value);
+		if (key === 'debugLogging') {
+			this.plugin.refreshLogger();
+		} else if (key === 'embeddingModel') {
+			this.plugin.brain?.resetForModelChange();
+			void this.plugin.startBrain();
+		}
 	}
 
-	display(): void {
-		const { containerEl } = this;
-		containerEl.empty();
-
-		const vaultCard = this.renderVaultIndexingCard(containerEl);
-		this.renderDebugLoggingSetting(containerEl);
-		const embeddingCard = this.renderEmbeddingModelCard(containerEl);
-		const rerankerCard = this.renderRerankerModelCard(containerEl);
-		this.renderRetrievalSettings(containerEl);
-		this.renderDisplaySettings(containerEl);
-
-		this.unsubscribeProgress?.();
-		this.unsubscribeProgress = this.plugin.brain?.onProgress(
-			this.updateUI(vaultCard, embeddingCard, rerankerCard),
-		);
-	}
-
-	private renderVaultIndexingCard(containerEl: HTMLElement): VaultIndexingCard {
-		let indexButton: ButtonComponent;
-		const vaultSetting = new Setting(containerEl)
-			.setClass('constellations-vault-setting')
-			.setName('Vault indexing')
-			.setDesc(
-				'Load the embedding model and index the vault. Runs automatically on startup and file changes.',
-			)
-			.addButton((button) => {
-				indexButton = button;
-				button.onClick(() => {
-					void this.plugin.startBrain();
-				});
-			});
-
-		const progressContainer = vaultSetting.descEl.createDiv({
-			cls: 'constellations-indexing-progress',
-		});
-
-		const progressRow = progressContainer.createDiv({ cls: 'constellations-progress-row' });
-		const progressCount = progressRow.createSpan({ cls: 'constellations-progress-count' });
-		const progressBar = progressRow.createEl('progress', { cls: 'constellations-progress-bar' });
-		const statsEl = progressContainer.createDiv({ cls: 'constellations-progress-file' });
-		const lastIndexedEl = progressContainer.createDiv({ cls: 'constellations-progress-last-indexed' });
-
-		return { indexButton: indexButton!, progressRow, progressCount, progressBar, statsEl, lastIndexedEl };
-	}
-
-	private renderDebugLoggingSetting(containerEl: HTMLElement): void {
-		new Setting(containerEl)
-			.setName('Debug logging')
-			.setDesc(
-				'Log indexing timing, device, and per-file progress to the ' +
-					'developer console (Cmd+Option+I on Mac, Ctrl+Shift+I on ' +
-					'Windows/Linux). Leave on while troubleshooting performance.',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.debugLogging)
-					.onChange(async (value) => {
-						this.plugin.settings.debugLogging = value;
-						await this.plugin.saveSettings();
-						this.plugin.refreshLogger();
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return [
+			{
+				type: 'group',
+				items: [this.vaultIndexingDefinition(), this.debugLoggingDefinition()],
+			},
+			{
+				type: 'group',
+				items: [this.embeddingModelDefinition(), this.rerankerModelDefinition()],
+			},
+			{
+				type: 'group',
+				items: [
+					this.matchingModeDefinition(),
+					this.sliderDefinition('maxRelatedNotes', {
+						name: 'Related notes',
+						desc: 'Maximum number of related notes to show.',
+						min: 1,
+						max: 25,
+						step: 1,
 					}),
-			);
+					this.sliderDefinition('maxChunksPerNote', {
+						name: 'Sections per note',
+						desc: 'Maximum number of matching sections shown per related note.',
+						min: 1,
+						max: 5,
+						step: 1,
+					}),
+					this.sliderDefinition('minScore', {
+						name: 'Minimum similarity',
+						desc:
+							'Minimum similarity score (0–1) for a section to count as ' +
+							'related. Higher means fewer, closer matches.',
+						min: 0,
+						max: 1,
+						step: 0.05,
+					}),
+				],
+			},
+			{
+				type: 'group',
+				items: [
+					{
+						name: 'Open related notes in new tab',
+						desc: 'Open related notes in a new tab instead of the current tab.',
+						control: { type: 'toggle', key: 'openInNewTab' },
+					},
+				],
+			},
+		];
 	}
 
-	private renderEmbeddingModelCard(containerEl: HTMLElement): ModelCard {
-		let embeddingDropdown: HTMLSelectElement;
-		const embeddingSetting = new Setting(containerEl)
-			.setClass('constellations-model-setting')
-			.setName('Embedding model')
-			.setDesc(
-				'Local model used for semantic search. Changing models triggers a re-index. ' +
-					'Models are downloaded once from Hugging Face on first use and cached locally.',
-			)
-			.addDropdown((dropdown) => {
-				for (const [id, spec] of Object.entries(EMBEDDING_MODELS)) {
-					const label = spec.displayName
-						? spec.hint
-							? `${spec.displayName} (${spec.hint})`
-							: spec.displayName
-						: id;
-					dropdown.addOption(id, label);
-				}
-				const selected =
-					EMBEDDING_MODELS[this.plugin.settings.embeddingModel]
-						? this.plugin.settings.embeddingModel
-						: DEFAULT_MODEL.modelId;
-				dropdown.setValue(selected);
-				embeddingDropdown = dropdown.selectEl;
-				dropdown.onChange(async (value) => {
-					this.plugin.settings.embeddingModel = value;
-					await this.plugin.saveSettings();
-					this.plugin.brain?.resetForModelChange();
-					void this.plugin.startBrain();
-				});
-			});
-
-		return { dropdown: embeddingDropdown!, ...this.renderModelStatusRow(embeddingSetting) };
+	private sliderDefinition(
+		key: 'maxRelatedNotes' | 'maxChunksPerNote' | 'minScore',
+		opts: { name: string; desc: string; min: number; max: number; step: number },
+	): SettingDefinition {
+		return {
+			name: opts.name,
+			desc: opts.desc,
+			control: { type: 'slider', key, min: opts.min, max: opts.max, step: opts.step },
+		};
 	}
 
-	private renderRerankerModelCard(containerEl: HTMLElement): ModelCard {
-		let rerankerDropdown: HTMLSelectElement;
-		const rerankerSetting = new Setting(containerEl)
-			.setClass('constellations-model-setting')
-			.setName('Reranking model')
-			.addDropdown((dropdown) => {
-				for (const [id, spec] of Object.entries(RERANKER_MODELS)) {
-					const label = spec.displayName || id;
-					dropdown.addOption(id, label);
-				}
-				const selected =
-					RERANKER_MODELS[this.plugin.settings.rerankerModel]
-						? this.plugin.settings.rerankerModel
-						: DEFAULT_RERANKER.modelId;
-				dropdown.setValue(selected).setDisabled(true);
-				rerankerDropdown = dropdown.selectEl;
-			});
-
-		return { dropdown: rerankerDropdown!, ...this.renderModelStatusRow(rerankerSetting) };
+	private debugLoggingDefinition(): SettingDefinition {
+		return {
+			name: 'Debug logging',
+			desc:
+				'Log indexing timing, device, and per-file progress to the ' +
+				'developer console (Cmd+Option+I on Mac, Ctrl+Shift+I on ' +
+				'Windows/Linux). Leave on while troubleshooting performance.',
+			control: { type: 'toggle', key: 'debugLogging' },
+		};
 	}
 
-	/** Shared status/progress row under a model dropdown's description. */
-	private renderModelStatusRow(setting: Setting): Omit<ModelCard, 'dropdown'> {
-		const statusContainer = setting.descEl.createDiv({
-			cls: 'constellations-model-status-container',
-		});
-		const statusEl = statusContainer.createDiv({ cls: 'constellations-model-status' });
-		const progressRow = statusContainer.createDiv({ cls: 'constellations-model-progress-row' });
-		const progressBar = progressRow.createEl('progress', { cls: 'constellations-model-progress-bar' });
-		progressBar.max = 100;
-		const progressPct = progressRow.createSpan({ cls: 'constellations-model-progress-pct' });
-
-		return { statusEl, progressRow, progressBar, progressPct };
-	}
-
-	private renderRetrievalSettings(containerEl: HTMLElement): void {
-		const strategyDesc = createFragment((el) => {
+	private matchingModeDefinition(): SettingDefinition {
+		const desc = createFragment((el) => {
 			el.createDiv({
 				text: 'Choose how Constellations finds related notes:',
 			});
@@ -295,119 +245,174 @@ export class ConstellationsSettingTab extends PluginSettingTab {
 			);
 		});
 
-		new Setting(containerEl)
-			.setClass('constellations-matching-setting')
-			.setName('Matching mode')
-			.setDesc(strategyDesc)
-			.addDropdown((dropdown) => {
-				dropdown
-					.addOption('maxsim', 'Detailed (recommended)')
-					.addOption('cursor', 'Focused')
-					.addOption('mean', 'Broad')
-					.setValue(this.plugin.settings.retrievalStrategy ?? 'maxsim')
-					.onChange(async (value) => {
-						this.plugin.settings.retrievalStrategy = value as RetrievalStrategy;
-						await this.plugin.saveSettings();
-					});
-			});
-
-		new Setting(containerEl)
-			.setName('Related notes')
-			.setDesc('Maximum number of related notes to show.')
-			.addSlider((slider) =>
-				slider
-					.setLimits(1, 25, 1)
-					.setValue(this.plugin.settings.maxRelatedNotes)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.maxRelatedNotes = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName('Sections per note')
-			.setDesc(
-				'Maximum number of matching sections shown per related note.',
-			)
-			.addSlider((slider) =>
-				slider
-					.setLimits(1, 5, 1)
-					.setValue(this.plugin.settings.maxChunksPerNote)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.maxChunksPerNote = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName('Minimum similarity')
-			.setDesc(
-				'Minimum similarity score (0–1) for a section to count as ' +
-					'related. Higher means fewer, closer matches.',
-			)
-			.addSlider((slider) =>
-				slider
-					.setLimits(0, 1, 0.05)
-					.setValue(this.plugin.settings.minScore)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.minScore = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-	}
-
-	private renderDisplaySettings(containerEl: HTMLElement): void {
-		new Setting(containerEl)
-			.setName('Open related notes in new tab')
-			.setDesc('Open related notes in a new tab instead of the current tab.')
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.openInNewTab)
-					.onChange(async (value) => {
-						this.plugin.settings.openInNewTab = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-	}
-
-	private updateUI(
-		vault: VaultIndexingCard,
-		embedding: ModelCard,
-		reranker: ModelCard,
-	): (p: BrainProgress) => void {
-		return (p: BrainProgress) => {
-			const isModelBusy = !this.plugin.brain?.isReady && (this.plugin.brain?.started ?? false);
-			const isIndexing = p.isIndexing;
-
-			vault.indexButton.setDisabled(isIndexing || isModelBusy);
-			vault.indexButton.setButtonText(isIndexing ? 'Indexing…' : 'Reindex vault');
-			vault.progressRow.toggleClass('is-invisible', !isIndexing);
-			vault.statsEl.setText(p.currentFile || (isIndexing ? 'Scanning vault…' : 'Not indexed yet'));
-
-			const lastIndexed = p.lastIndexedAt ?? this.plugin.settings.lastIndexedAt;
-			vault.lastIndexedEl.toggleClass('is-invisible', !lastIndexed);
-
-			if (isIndexing) {
-				if (p.total > 0) {
-					vault.progressCount.setText(`${p.done}/${p.total} files…`);
-					vault.progressBar.value = p.done;
-					vault.progressBar.max = p.total;
-				} else {
-					vault.progressCount.setText('Starting…');
-					vault.progressBar.value = 0;
-					vault.progressBar.max = 1;
-				}
-			} else if (lastIndexed) {
-				vault.lastIndexedEl.setText(`Last indexed: ${formatLastIndexed(lastIndexed)}`);
-			}
-
-			embedding.dropdown.disabled = isIndexing;
-			this.updateModelCard(embedding, p.embeddingStatus ?? this.plugin.brain?.embeddingStatus);
-			this.updateModelCard(reranker, p.rerankerStatus ?? this.plugin.brain?.rerankerStatus);
+		return {
+			name: 'Matching mode',
+			desc,
+			control: {
+				type: 'dropdown',
+				key: 'retrievalStrategy',
+				defaultValue: 'maxsim',
+				options: {
+					maxsim: 'Detailed (recommended)',
+					cursor: 'Focused',
+					mean: 'Broad',
+				},
+			},
 		};
+	}
+
+	private vaultIndexingDefinition(): SettingDefinition {
+		return {
+			name: 'Vault indexing',
+			render: (setting) => {
+				let indexButton: ButtonComponent;
+				setting
+					.setClass('constellations-vault-setting')
+					.setDesc(
+						'Load the embedding model and index the vault. Runs automatically on startup and file changes.',
+					)
+					.addButton((button) => {
+						indexButton = button;
+						button.onClick(() => {
+							void this.plugin.startBrain();
+						});
+					});
+
+				const progressContainer = setting.descEl.createDiv({
+					cls: 'constellations-indexing-progress',
+				});
+				const progressRow = progressContainer.createDiv({ cls: 'constellations-progress-row' });
+				const progressCount = progressRow.createSpan({ cls: 'constellations-progress-count' });
+				const progressBar = progressRow.createEl('progress', { cls: 'constellations-progress-bar' });
+				const statsEl = progressContainer.createDiv({ cls: 'constellations-progress-file' });
+				const lastIndexedEl = progressContainer.createDiv({ cls: 'constellations-progress-last-indexed' });
+
+				const vault: VaultIndexingCard = {
+					indexButton: indexButton!,
+					progressRow,
+					progressCount,
+					progressBar,
+					statsEl,
+					lastIndexedEl,
+				};
+				return this.plugin.brain?.onProgress((p) => this.updateVaultCard(vault, p));
+			},
+		};
+	}
+
+	private embeddingModelDefinition(): SettingDefinition {
+		return {
+			name: 'Embedding model',
+			render: (setting) => {
+				let embeddingDropdown: HTMLSelectElement;
+				setting
+					.setClass('constellations-model-setting')
+					.setDesc(
+						'Local model used for semantic search. Changing models triggers a re-index. ' +
+							'Models are downloaded once from Hugging Face on first use and cached locally.',
+					)
+					.addDropdown((dropdown) => {
+						for (const [id, spec] of Object.entries(EMBEDDING_MODELS)) {
+							const label = spec.displayName
+								? spec.hint
+									? `${spec.displayName} (${spec.hint})`
+									: spec.displayName
+								: id;
+							dropdown.addOption(id, label);
+						}
+						const selected =
+							EMBEDDING_MODELS[this.plugin.settings.embeddingModel]
+								? this.plugin.settings.embeddingModel
+								: DEFAULT_MODEL.modelId;
+						dropdown.setValue(selected);
+						embeddingDropdown = dropdown.selectEl;
+						dropdown.onChange(async (value) => {
+							await this.setControlValue('embeddingModel', value);
+						});
+					});
+
+				const card: ModelCard = {
+					dropdown: embeddingDropdown!,
+					...this.renderModelStatusRow(setting),
+				};
+				return this.plugin.brain?.onProgress((p) => {
+					card.dropdown.disabled = p.isIndexing;
+					this.updateModelCard(card, p.embeddingStatus ?? this.plugin.brain?.embeddingStatus);
+				});
+			},
+		};
+	}
+
+	private rerankerModelDefinition(): SettingDefinition {
+		return {
+			name: 'Reranking model',
+			render: (setting) => {
+				let rerankerDropdown: HTMLSelectElement;
+				setting
+					.setClass('constellations-model-setting')
+					.addDropdown((dropdown) => {
+						for (const [id, spec] of Object.entries(RERANKER_MODELS)) {
+							const label = spec.displayName || id;
+							dropdown.addOption(id, label);
+						}
+						const selected =
+							RERANKER_MODELS[this.plugin.settings.rerankerModel]
+								? this.plugin.settings.rerankerModel
+								: DEFAULT_RERANKER.modelId;
+						dropdown.setValue(selected).setDisabled(true);
+						rerankerDropdown = dropdown.selectEl;
+					});
+
+				const card: ModelCard = {
+					dropdown: rerankerDropdown!,
+					...this.renderModelStatusRow(setting),
+				};
+				return this.plugin.brain?.onProgress((p) =>
+					this.updateModelCard(card, p.rerankerStatus ?? this.plugin.brain?.rerankerStatus),
+				);
+			},
+		};
+	}
+
+	/** Shared status/progress row under a model dropdown's description. */
+	private renderModelStatusRow(setting: Setting): Omit<ModelCard, 'dropdown'> {
+		const statusContainer = setting.descEl.createDiv({
+			cls: 'constellations-model-status-container',
+		});
+		const statusEl = statusContainer.createDiv({ cls: 'constellations-model-status' });
+		const progressRow = statusContainer.createDiv({ cls: 'constellations-model-progress-row' });
+		const progressBar = progressRow.createEl('progress', { cls: 'constellations-model-progress-bar' });
+		progressBar.max = 100;
+		const progressPct = progressRow.createSpan({ cls: 'constellations-model-progress-pct' });
+
+		return { statusEl, progressRow, progressBar, progressPct };
+	}
+
+	private updateVaultCard(vault: VaultIndexingCard, p: BrainProgress): void {
+		const isModelBusy = !this.plugin.brain?.isReady && (this.plugin.brain?.started ?? false);
+		const isIndexing = p.isIndexing;
+
+		vault.indexButton.setDisabled(isIndexing || isModelBusy);
+		vault.indexButton.setButtonText(isIndexing ? 'Indexing…' : 'Reindex vault');
+		vault.progressRow.toggleClass('is-invisible', !isIndexing);
+		vault.statsEl.setText(p.currentFile || (isIndexing ? 'Scanning vault…' : 'Not indexed yet'));
+
+		const lastIndexed = p.lastIndexedAt ?? this.plugin.settings.lastIndexedAt;
+		vault.lastIndexedEl.toggleClass('is-invisible', !lastIndexed);
+
+		if (isIndexing) {
+			if (p.total > 0) {
+				vault.progressCount.setText(`${p.done}/${p.total} files…`);
+				vault.progressBar.value = p.done;
+				vault.progressBar.max = p.total;
+			} else {
+				vault.progressCount.setText('Starting…');
+				vault.progressBar.value = 0;
+				vault.progressBar.max = 1;
+			}
+		} else if (lastIndexed) {
+			vault.lastIndexedEl.setText(`Last indexed: ${formatLastIndexed(lastIndexed)}`);
+		}
 	}
 
 	private updateModelCard(card: ModelCard, status: ModelStatus | undefined): void {
