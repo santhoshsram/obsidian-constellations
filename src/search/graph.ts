@@ -152,7 +152,6 @@ export async function buildContextGraph(
 		};
 		nodes.push(seedNode);
 
-		// Hop 1: Related notes to seed note
 		const hop1Files: string[] = [];
 
 		if (initialHop1 && initialHop1.length > 0) {
@@ -202,7 +201,6 @@ export async function buildContextGraph(
 			}
 		}
 	} else {
-		// seed.type === 'query'
 		if (!embedder) {
 			return { nodes: [], edges: [], seed };
 		}
@@ -218,7 +216,6 @@ export async function buildContextGraph(
 		};
 		nodes.push(queryNode);
 
-		// Search index with query vector
 		const searchResults = index.search(queryVector, 50, threshold);
 		const fileBestScore = new Map<string, number>();
 		for (const res of searchResults) {
@@ -248,9 +245,6 @@ export async function buildContextGraph(
 		}
 	}
 
-	// Build edges:
-	// - Primary edges (Seed -> Hop 1): Solid, vibrant
-	// - Secondary edges (Hop 1 -> Hop 2 or Hop 1 -> Hop 1): Faint hairline ambient satellites
 	const edges: GraphEdge[] = [];
 	const seenPairs = new Set<string>();
 
@@ -279,7 +273,6 @@ export async function buildContextGraph(
 	const hop1Nodes = nodes.filter((n) => n.hop === 1);
 	const hop1NodeIds = new Set(hop1Nodes.map((n) => n.id));
 
-	// 1. Seed -> Hop 1 edges (Primary spokes)
 	if (seedNode) {
 		for (const h1 of hop1Nodes) {
 			let sim = 0;
@@ -303,7 +296,6 @@ export async function buildContextGraph(
 		}
 	}
 
-	// 2. Secondary 2-hop satellites & peer cross-connections
 	const hop2PerNode = Math.min(
 		6,
 		Math.max(0, options.graphHop2Count !== undefined ? options.graphHop2Count : 4),
@@ -330,7 +322,6 @@ export async function buildContextGraph(
 		for (const cand of candidates) {
 			if (addedForH1 >= hop2PerNode) break;
 
-			// Case A: Candidate is another 1-hop foreground star (peer cross-connection)
 			if (hop1NodeIds.has(cand.file)) {
 				const countA = h1CrossCounts.get(h1.id) ?? 0;
 				const countB = h1CrossCounts.get(cand.file) ?? 0;
@@ -343,7 +334,6 @@ export async function buildContextGraph(
 				continue;
 			}
 
-			// Case B: Candidate is a true 2-hop background star (satellite)
 			if (!visitedFiles.has(cand.file)) {
 				visitedFiles.add(cand.file);
 				nodes.push({

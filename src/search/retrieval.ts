@@ -166,7 +166,6 @@ export function candidateChunksCursor(
 
 	let targetChunks: Array<{ record: typeof sourceChunks[0]['record']; vector: Float32Array }> = [];
 
-	// 1. Direct chunkIndex if specified
 	if (typeof options.chunkIndex === 'number') {
 		const c = sourceChunks[options.chunkIndex];
 		if (c) {
@@ -174,7 +173,6 @@ export function candidateChunksCursor(
 		}
 	}
 
-	// 2. Heading match
 	if (targetChunks.length === 0 && options.cursorHeading) {
 		const normalized = options.cursorHeading.trim().toLowerCase();
 		targetChunks = sourceChunks.filter((c) =>
@@ -182,7 +180,6 @@ export function candidateChunksCursor(
 		);
 	}
 
-	// 3. Line range match
 	if (targetChunks.length === 0 && typeof options.cursorLine === 'number') {
 		const line = options.cursorLine;
 		const match = sourceChunks.find(
@@ -197,7 +194,6 @@ export function candidateChunksCursor(
 		}
 	}
 
-	// 4. Fallback to first chunk (the note's lead/overview section)
 	if (targetChunks.length === 0) {
 		const first = sourceChunks[0];
 		if (first) {

@@ -58,19 +58,12 @@ export function flattenTable(content: string): string {
 
 /** Strip markdown markups, keeping the textual content. */
 export function stripMdMarkups(text: string): string {
-	// heading markups
 	text = text.replace(/^#+\s+(.*)$/gm, '$1');
-	// bold or italics that use *
 	text = text.replace(/\*+(.*?)\*+/g, '$1');
-	// bold or italics that use _
 	text = text.replace(/_+(.*?)_+/g, '$1');
-	// highlights like ==highlighted text==
 	text = text.replace(/=+(.*?)=+/g, '$1');
-	// block quotes
 	text = text.replace(/^\s*>+(.*)$/gm, '$1');
-	// bullets (both ordered and unordered)
 	text = text.replace(/^\s*(\d+\.|-+) +/gm, '');
-	// embeds and links: [text](url) -> "text url"
 	text = text.replace(/!*\[(.*?)\]\((.*?)\)/g, '$1 $2');
 	return text;
 }

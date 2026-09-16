@@ -62,7 +62,6 @@ export async function rerankCandidateChunks(
 		return [];
 	}
 
-	// 1. Top-K funneling: sort by vector similarity descending and take topK
 	const tFunnelStart = performance.now();
 	const pool = [...candidates]
 		.sort((a, b) => b.score - a.score)
@@ -72,7 +71,6 @@ export async function rerankCandidateChunks(
 		`[rerank] Top-${topK} funneling: took ${funnelMs.toFixed(1)}ms (${candidates.length} stage 1 chunks -> pool of ${pool.length})`,
 	);
 
-	// 2. Identify unique files needed
 	const pathsToRead = new Set<string>();
 	for (const c of pool) {
 		pathsToRead.add(c.record.filePath);
@@ -81,7 +79,6 @@ export async function rerankCandidateChunks(
 		}
 	}
 
-	// 3. Parallel file reads (chunk fetch from vault)
 	const tReadStart = performance.now();
 	const fileMap = new Map<string, string>();
 	try {
@@ -107,7 +104,6 @@ export async function rerankCandidateChunks(
 		`[rerank] Chunk fetch: read ${pathsToRead.size} unique note files in ${readMs.toFixed(1)}ms (avg ${(readMs / Math.max(1, pathsToRead.size)).toFixed(1)}ms/file)`,
 	);
 
-	// 4. Build text pairs for inference
 	const tPairStart = performance.now();
 	const pairs: TextPair[] = [];
 	for (const c of pool) {
@@ -138,7 +134,6 @@ export async function rerankCandidateChunks(
 		`[rerank] Chunk slicing: extracted ${pairs.length} (query, passage) pairs in ${pairMs.toFixed(1)}ms`,
 	);
 
-	// 5. Batch cross-encoder inference
 	try {
 		const tInferStart = performance.now();
 		const rerankOptions = logger
@@ -170,10 +165,8 @@ export async function rerankCandidateChunks(
 			score: scores[i] ?? c.score,
 		}));
 
-		// Re-sort descending by reranker score
 		reranked.sort((a, b) => b.score - a.score);
 
-		// Log individual candidate score and rank changes for top results
 		for (let i = 0; i < Math.min(10, reranked.length); i++) {
 			const c = reranked[i];
 			if (!c) continue;
