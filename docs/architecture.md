@@ -1,6 +1,6 @@
-# Constellations — Technical Architecture
+# Proxima - Technical Architecture
 
-Constellations is a local-first semantic retrieval and discovery plugin for Obsidian. It indexes vault notes into content-addressed semantic chunks, computes vector embeddings fully on-device, and surfaces relevant notes using two-stage retrieval (dense vector search funneled into a cross-encoder reranker).
+Proxima is a local-first semantic retrieval and discovery plugin for Obsidian. It indexes vault notes into content-addressed semantic chunks, computes vector embeddings fully on-device, and surfaces relevant notes using two-stage retrieval (dense vector search funneled into a cross-encoder reranker).
 
 ---
 
@@ -25,7 +25,7 @@ Constellations is a local-first semantic retrieval and discovery plugin for Obsi
 | **Default Reranker** | `Xenova/ms-marco-MiniLM-L-6-v2` | 22M cross-encoder, fp16/fp32 WebGPU |
 | **Alternative Reranker** | `Alibaba-NLP/gte-reranker-modernbert-base` | ModernBERT 150M cross-encoder |
 | **Vector Store** | In-memory brute-force cosine search | Flat contiguous `Float32Array` buffer |
-| **Persistence** | Vault adapter (`.obsidian/plugins/constellations/`) | `vectors.bin`, `chunks.json`, `state.json` |
+| **Persistence** | Vault adapter (`.obsidian/plugins/proxima/`) | `vectors.bin`, `chunks.json`, `state.json` |
 
 ### Electron & WebGPU Runtime Bridge
 Obsidian's Electron renderer includes Node integration, which can cause web-targeted libraries to misidentify the runtime. To ensure `@huggingface/transformers` activates its browser/WebGPU backend (`onnxruntime-web`) rather than Node stubs, the plugin imports `onnxruntime-web/webgpu`, clears the global runtime symbol, and isolates the dynamic import of transformers.js. All execution occurs strictly on-device through browser-compatible APIs.
@@ -113,7 +113,7 @@ Markdown notes are parsed hierarchically into bounded semantic blocks with line 
 
 ## 4. Indexing & Storage
 
-All index data lives in `<Vault>/.obsidian/plugins/constellations/`:
+All index data lives in `<Vault>/.obsidian/plugins/proxima/`:
 
 - **`vectors.bin`:** Contiguous binary `Float32Array` of size `(N_chunks × dimensions)`. Row index maps directly to chunk vector.
 - **`chunks.json`:** Array of `ChunkRecord` metadata objects (content hash ID, file path, heading path, startLine, endLine, vectorRow).
@@ -134,7 +134,7 @@ All index data lives in `<Vault>/.obsidian/plugins/constellations/`:
 
 Retrieval uses a two-stage funnel designed to maximize precision while keeping latency low. 
 
-Modern semantic search pipelines balance two competing forces: retrieval scale (searching 10,000+ chunks in milliseconds using fast vector cosine similarity) and semantic nuance (verifying relevance through deep token-to-token attention). Constellations solves this by casting a wide, fast net in Stage 1, and funneling the top candidates into a high-precision cross-encoder in Stage 2.
+Modern semantic search pipelines balance two competing forces: retrieval scale (searching 10,000+ chunks in milliseconds using fast vector cosine similarity) and semantic nuance (verifying relevance through deep token-to-token attention). Proxima solves this by casting a wide, fast net in Stage 1, and funneling the top candidates into a high-precision cross-encoder in Stage 2.
 
 ```mermaid
 sequenceDiagram

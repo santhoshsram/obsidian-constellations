@@ -1,6 +1,6 @@
 import { App, ButtonComponent, PluginSettingTab, Setting } from 'obsidian';
 import type { SettingDefinition, SettingDefinitionItem } from 'obsidian';
-import type ConstellationsPlugin from './main';
+import type ProximaPlugin from './main';
 import type { BrainProgress } from './brain';
 import {
 	EMBEDDING_MODELS,
@@ -10,7 +10,7 @@ import {
 } from './embed/models';
 import type { RetrievalStrategy } from './search/retrieval';
 
-export interface ConstellationsSettings {
+export interface ProximaSettings {
 	/** Hugging Face model ID used for embeddings. */
 	embeddingModel: string;
 	/** Hugging Face model ID used for reranking. */
@@ -37,7 +37,7 @@ export interface ConstellationsSettings {
 	sidebarViewMode: 'list' | 'graph';
 }
 
-export const DEFAULT_SETTINGS: ConstellationsSettings = {
+export const DEFAULT_SETTINGS: ProximaSettings = {
 	embeddingModel: DEFAULT_MODEL.modelId,
 	rerankerModel: DEFAULT_RERANKER.modelId,
 	rerankerEnabled: true,
@@ -86,14 +86,14 @@ export function renderModelStatus(
 ): void {
 	containerEl.empty();
 	containerEl.createSpan({
-		cls: 'constellations-model-status-label',
+		cls: 'proxima-model-status-label',
 		text: 'Status: ',
 	});
 	const formatted = formatModelStatus(status);
 	const isReady = status?.state === 'ready';
 	const isDownloading = status?.state === 'downloading';
 	const cls = [
-		'constellations-model-status-value',
+		'proxima-model-status-value',
 		isReady ? 'is-ready' : '',
 		isDownloading ? 'is-downloading' : '',
 	]
@@ -125,10 +125,10 @@ export function formatLastIndexed(
 		  });
 }
 
-export class ConstellationsSettingTab extends PluginSettingTab {
-	plugin: ConstellationsPlugin;
+export class ProximaSettingTab extends PluginSettingTab {
+	plugin: ProximaPlugin;
 
-	constructor(app: App, plugin: ConstellationsPlugin) {
+	constructor(app: App, plugin: ProximaPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -229,7 +229,7 @@ export class ConstellationsSettingTab extends PluginSettingTab {
 	private matchingModeDefinition(): SettingDefinition {
 		const desc = createFragment((el) => {
 			el.createDiv({
-				text: 'Choose how Constellations finds related notes:',
+				text: 'Choose how Proxima finds related notes:',
 			});
 			const list = el.createEl('ul');
 			const li1 = list.createEl('li');
@@ -271,7 +271,7 @@ export class ConstellationsSettingTab extends PluginSettingTab {
 			render: (setting) => {
 				let indexButton: ButtonComponent;
 				setting
-					.setClass('constellations-vault-setting')
+					.setClass('proxima-vault-setting')
 					.setDesc(
 						'Load the embedding model and index the vault. Runs automatically on startup and file changes.',
 					)
@@ -283,13 +283,13 @@ export class ConstellationsSettingTab extends PluginSettingTab {
 					});
 
 				const progressContainer = setting.descEl.createDiv({
-					cls: 'constellations-indexing-progress',
+					cls: 'proxima-indexing-progress',
 				});
-				const progressRow = progressContainer.createDiv({ cls: 'constellations-progress-row' });
-				const progressCount = progressRow.createSpan({ cls: 'constellations-progress-count' });
-				const progressBar = progressRow.createEl('progress', { cls: 'constellations-progress-bar' });
-				const statsEl = progressContainer.createDiv({ cls: 'constellations-progress-file' });
-				const lastIndexedEl = progressContainer.createDiv({ cls: 'constellations-progress-last-indexed' });
+				const progressRow = progressContainer.createDiv({ cls: 'proxima-progress-row' });
+				const progressCount = progressRow.createSpan({ cls: 'proxima-progress-count' });
+				const progressBar = progressRow.createEl('progress', { cls: 'proxima-progress-bar' });
+				const statsEl = progressContainer.createDiv({ cls: 'proxima-progress-file' });
+				const lastIndexedEl = progressContainer.createDiv({ cls: 'proxima-progress-last-indexed' });
 
 				const vault: VaultIndexingCard = {
 					indexButton: indexButton!,
@@ -310,7 +310,7 @@ export class ConstellationsSettingTab extends PluginSettingTab {
 			render: (setting) => {
 				let embeddingDropdown: HTMLSelectElement;
 				setting
-					.setClass('constellations-model-setting')
+					.setClass('proxima-model-setting')
 					.setDesc(
 						'Local model used for semantic search. Changing models triggers a re-index. ' +
 							'Models are downloaded once from Hugging Face on first use and cached locally.',
@@ -353,7 +353,7 @@ export class ConstellationsSettingTab extends PluginSettingTab {
 			render: (setting) => {
 				let rerankerDropdown: HTMLSelectElement;
 				setting
-					.setClass('constellations-model-setting')
+					.setClass('proxima-model-setting')
 					.addDropdown((dropdown) => {
 						for (const [id, spec] of Object.entries(RERANKER_MODELS)) {
 							const label = spec.displayName || id;
@@ -381,13 +381,13 @@ export class ConstellationsSettingTab extends PluginSettingTab {
 	/** Shared status/progress row under a model dropdown's description. */
 	private renderModelStatusRow(setting: Setting): Omit<ModelCard, 'dropdown'> {
 		const statusContainer = setting.descEl.createDiv({
-			cls: 'constellations-model-status-container',
+			cls: 'proxima-model-status-container',
 		});
-		const statusEl = statusContainer.createDiv({ cls: 'constellations-model-status' });
-		const progressRow = statusContainer.createDiv({ cls: 'constellations-model-progress-row' });
-		const progressBar = progressRow.createEl('progress', { cls: 'constellations-model-progress-bar' });
+		const statusEl = statusContainer.createDiv({ cls: 'proxima-model-status' });
+		const progressRow = statusContainer.createDiv({ cls: 'proxima-model-progress-row' });
+		const progressBar = progressRow.createEl('progress', { cls: 'proxima-model-progress-bar' });
 		progressBar.max = 100;
-		const progressPct = progressRow.createSpan({ cls: 'constellations-model-progress-pct' });
+		const progressPct = progressRow.createSpan({ cls: 'proxima-model-progress-pct' });
 
 		return { statusEl, progressRow, progressBar, progressPct };
 	}

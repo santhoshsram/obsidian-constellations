@@ -3,11 +3,11 @@ import { pluginName, setPluginName } from '../src/plugin-name';
 
 describe('plugin-name', () => {
 	beforeEach(() => {
-		setPluginName('Constellations');
+		setPluginName('Proxima');
 	});
 
 	it('returns default fallback name when unchanged', () => {
-		expect(pluginName()).toBe('Constellations');
+		expect(pluginName()).toBe('Proxima');
 	});
 
 	it('allows updating the plugin name via setPluginName', () => {

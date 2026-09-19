@@ -11,7 +11,7 @@ Please review the checklist below. If you agree with the steps, I can proceed wi
 Before releasing, we must ensure the plugin meets Obsidian's guidelines:
 
 - **Manifest Validation**: 
-  - Ensure `id` is stable and unique (currently `constellations`).
+  - Ensure `id` is stable and unique (currently `proxima`).
   - Ensure `name`, `version`, `minAppVersion`, `description`, and `author` are correctly filled out.
 - **README.md**:
   - Must clearly explain what the plugin does, how to use it, and include any necessary screenshots/videos.
@@ -55,8 +55,8 @@ Once the GitHub Release is live, the final step is submitting the plugin to the 
    Add a new JSON object to `community-plugins.json` in alphabetical order by `id`:
    ```json
    {
-       "id": "constellations",
-       "name": "Constellations",
+       "id": "proxima",
+       "name": "Proxima",
        "description": "Local-first semantic constellations: related notes, interactive star graph, and concept search — all on-device.",
        "author": "Santhosh Sundararaman",
        "repo": "santhosh/obsidian-constellations" 

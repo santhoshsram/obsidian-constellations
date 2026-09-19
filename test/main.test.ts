@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import ConstellationsPlugin from '../src/main';
+import ProximaPlugin from '../src/main';
 import { pluginName } from '../src/plugin-name';
 import { VIEW_TYPE_RELATED } from '../src/ui/related-notes-view';
 import type { App, Command, PluginManifest, WorkspaceLeaf } from 'obsidian';
@@ -11,8 +11,8 @@ interface MockWorkspace {
 	revealLeaf: ReturnType<typeof vi.fn>;
 }
 
-describe('ConstellationsPlugin', () => {
-	let plugin: ConstellationsPlugin;
+describe('ProximaPlugin', () => {
+	let plugin: ProximaPlugin;
 	let registeredCommands: Command[];
 	let registeredViews: Record<string, unknown>;
 	let mockWorkspace: MockWorkspace;
@@ -36,7 +36,7 @@ describe('ConstellationsPlugin', () => {
 		} as unknown as App;
 
 		const mockManifest: PluginManifest = {
-			id: 'constellations',
+			id: 'proxima',
 			name: 'Test Brain Plugin',
 			version: '0.1.0',
 			minAppVersion: '1.7.2',
@@ -44,7 +44,7 @@ describe('ConstellationsPlugin', () => {
 			author: '',
 		};
 
-		plugin = new ConstellationsPlugin(mockApp, mockManifest);
+		plugin = new ProximaPlugin(mockApp, mockManifest);
 		plugin.addCommand = vi.fn((cmd: Command) => {
 			registeredCommands.push(cmd);
 			return cmd;
@@ -69,13 +69,13 @@ describe('ConstellationsPlugin', () => {
 		expect(registeredViews[VIEW_TYPE_RELATED]).toBeDefined();
 	});
 
-	it('registers consolidated commands including open-constellation-graph', async () => {
+	it('registers consolidated commands including open-proxima-graph', async () => {
 		await plugin.onload();
 
 		const commandIds = registeredCommands.map((c) => c.id);
 		expect(commandIds).toContain('reindex-notes');
 		expect(commandIds).toContain('show-related-notes');
-		expect(commandIds).toContain('open-constellation-graph');
+		expect(commandIds).toContain('open-proxima-graph');
 
 		// Old notice commands should no longer exist
 		expect(commandIds).not.toContain('find-related-notes');
@@ -84,11 +84,11 @@ describe('ConstellationsPlugin', () => {
 		expect(commandIds).not.toContain('find-related-notes-mean');
 	});
 
-	it('registers ribbon icon for Open Constellation Graph', async () => {
+	it('registers ribbon icon for Open Proxima Graph', async () => {
 		await plugin.onload();
 		expect(addRibbonIconSpy).toHaveBeenCalledWith(
 			'brain-circuit',
-			'Open constellation graph',
+			'Open Proxima graph',
 			expect.any(Function),
 		);
 	});

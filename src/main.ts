@@ -1,8 +1,8 @@
 import { Plugin, type WorkspaceLeaf } from 'obsidian';
 import {
 	DEFAULT_SETTINGS,
-	ConstellationsSettings,
-	ConstellationsSettingTab,
+	ProximaSettings,
+	ProximaSettingTab,
 } from './settings';
 import { Brain } from './brain';
 import { setPluginName } from './plugin-name';
@@ -12,8 +12,8 @@ import {
 } from './ui/related-notes-view';
 import { ContextGraphModal } from './ui/graph/context-graph-modal';
 
-export default class ConstellationsPlugin extends Plugin {
-	settings!: ConstellationsSettings;
+export default class ProximaPlugin extends Plugin {
+	settings!: ProximaSettings;
 	brain!: Brain;
 	private statusBarEl!: HTMLElement;
 
@@ -25,11 +25,11 @@ export default class ConstellationsPlugin extends Plugin {
 		this.statusBarEl = this.addStatusBarItem();
 		this.setStatus('');
 
-		this.addRibbonIcon('brain-circuit', 'Open constellation graph', () => {
+		this.addRibbonIcon('brain-circuit', 'Open Proxima graph', () => {
 			new ContextGraphModal(this.app, this).open();
 		});
 
-		this.addSettingTab(new ConstellationsSettingTab(this.app, this));
+		this.addSettingTab(new ProximaSettingTab(this.app, this));
 
 		this.registerView(
 			VIEW_TYPE_RELATED,
@@ -51,8 +51,8 @@ export default class ConstellationsPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: 'open-constellation-graph',
-			name: 'Open constellation graph',
+			id: 'open-proxima-graph',
+			name: 'Open Proxima graph',
 			callback: () => {
 				new ContextGraphModal(this.app, this).open();
 			},
@@ -131,7 +131,7 @@ export default class ConstellationsPlugin extends Plugin {
 		this.settings = Object.assign(
 			{},
 			DEFAULT_SETTINGS,
-			(await this.loadData()) as Partial<ConstellationsSettings>,
+			(await this.loadData()) as Partial<ProximaSettings>,
 		);
 		this.migrateSettings();
 	}

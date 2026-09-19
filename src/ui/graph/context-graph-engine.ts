@@ -102,7 +102,7 @@ export class ContextGraphEngine {
 		private options: ContextGraphEngineOptions = {},
 	) {
 		this.canvas = container.createEl('canvas', {
-			cls: 'constellations-context-graph-canvas',
+			cls: 'proxima-context-graph-canvas',
 		});
 
 		const ctx = this.canvas.getContext('2d');
@@ -112,7 +112,7 @@ export class ContextGraphEngine {
 		this.ctx = ctx;
 
 		this.tooltipEl = container.createDiv({
-			cls: 'constellations-context-graph-tooltip is-hidden',
+			cls: 'proxima-context-graph-tooltip is-hidden',
 		});
 
 		const rect = containerRect(container);

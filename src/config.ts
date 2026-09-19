@@ -1,8 +1,8 @@
 /**
- * Internal configuration constants for Constellations.
+ * Internal configuration constants for Proxima.
  *
  * Tunable knobs kept out of the general user settings UI to keep the interface
- * clean, but easily configurable here or via `<Vault>/.obsidian/plugins/constellations/data.json`.
+ * clean, but easily configurable here or via `<Vault>/.obsidian/plugins/proxima/data.json`.
  */
 
 export const RETRIEVAL_CONFIG = {

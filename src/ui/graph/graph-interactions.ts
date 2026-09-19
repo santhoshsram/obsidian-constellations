@@ -109,22 +109,22 @@ export function updateTooltipContent(
 
 	tooltipEl.empty();
 	tooltipEl.createDiv({
-		cls: 'constellations-context-graph-tooltip-header',
+		cls: 'proxima-context-graph-tooltip-header',
 		text: 'Connections',
 	});
 	const list = tooltipEl.createDiv({
-		cls: 'constellations-context-graph-tooltip-list',
+		cls: 'proxima-context-graph-tooltip-list',
 	});
 	node.sneakPeek.slice(0, 5).forEach((title, idx) => {
 		const item = list.createDiv({
-			cls: 'constellations-context-graph-tooltip-item',
+			cls: 'proxima-context-graph-tooltip-item',
 		});
 		item.createSpan({
-			cls: 'constellations-context-graph-tooltip-number',
+			cls: 'proxima-context-graph-tooltip-number',
 			text: `${idx + 1}.`,
 		});
 		item.createSpan({
-			cls: 'constellations-context-graph-tooltip-text',
+			cls: 'proxima-context-graph-tooltip-text',
 			text: title,
 		});
 	});
