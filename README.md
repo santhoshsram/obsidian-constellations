@@ -3,7 +3,7 @@
 Proxima surfaces notes that are semantically similar to the note you're currently viewing, and lets you search for notes based on semantic meaning rather than exact words.
 
 > **Why "Proxima"?**
-> Proxima Centauri is the nearest star to our sun. This plugin finds the notes "nearest" to the one you're reading, in meaning rather than distance.
+> Proxima means "nearest." It finds the notes conceptually nearest to the one you're reading, not just the ones sharing the same words.
 
 ## Screenshots
 
