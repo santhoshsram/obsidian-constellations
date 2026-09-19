@@ -18,6 +18,7 @@ export class ContextGraphModal extends Modal {
 	private searchWrapper!: HTMLElement;
 	private searchInput!: HTMLInputElement;
 	private searchClearBtn!: HTMLElement;
+	private centerWrapperEl!: HTMLElement;
 	private centerTitleEl!: HTMLElement;
 	private openButtonEl!: HTMLElement;
 	private emptyStateEl!: HTMLElement;
@@ -107,14 +108,14 @@ export class ContextGraphModal extends Modal {
 		});
 
 		// Right: Active node badge + Open note button
-		const centerWrapper = headerEl.createDiv({
+		this.centerWrapperEl = headerEl.createDiv({
 			cls: 'proxima-context-graph-center-container',
 		});
-		this.centerTitleEl = centerWrapper.createSpan({
+		this.centerTitleEl = this.centerWrapperEl.createSpan({
 			cls: 'proxima-context-graph-center-title',
 			text: 'Proxima Graph',
 		});
-		this.openButtonEl = centerWrapper.createEl('button', {
+		this.openButtonEl = this.centerWrapperEl.createEl('button', {
 			cls: 'proxima-context-graph-open-btn',
 			text: 'Open note ↗',
 		});
@@ -242,8 +243,10 @@ export class ContextGraphModal extends Modal {
 		this.centerTitleEl.setText(label);
 		if (filePath) {
 			this.openButtonEl.removeClass('is-hidden');
+			this.centerWrapperEl.removeClass('is-open-btn-hidden');
 		} else {
 			this.openButtonEl.addClass('is-hidden');
+			this.centerWrapperEl.addClass('is-open-btn-hidden');
 		}
 	}
 
