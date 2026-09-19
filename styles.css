@@ -142,7 +142,7 @@
 	flex-direction: row;
 	align-items: center;
 	gap: 10px;
-	flex-wrap: nowrap !important;
+	flex-wrap: nowrap;
 	white-space: nowrap;
 }
 
@@ -575,7 +575,7 @@
 	box-sizing: border-box;
 }
 
-.proxima-context-graph-center-container:has(.proxima-context-graph-open-btn.is-hidden) {
+.proxima-context-graph-center-container.is-open-btn-hidden {
 	padding-right: 14px;
 }
 
