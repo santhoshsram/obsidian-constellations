@@ -69,13 +69,13 @@ describe('ProximaPlugin', () => {
 		expect(registeredViews[VIEW_TYPE_RELATED]).toBeDefined();
 	});
 
-	it('registers consolidated commands including open-proxima-graph', async () => {
+	it('registers consolidated commands including open-graph', async () => {
 		await plugin.onload();
 
 		const commandIds = registeredCommands.map((c) => c.id);
 		expect(commandIds).toContain('reindex-notes');
 		expect(commandIds).toContain('show-related-notes');
-		expect(commandIds).toContain('open-proxima-graph');
+		expect(commandIds).toContain('open-graph');
 
 		// Old notice commands should no longer exist
 		expect(commandIds).not.toContain('find-related-notes');
@@ -84,11 +84,11 @@ describe('ProximaPlugin', () => {
 		expect(commandIds).not.toContain('find-related-notes-mean');
 	});
 
-	it('registers ribbon icon for Open Proxima Graph', async () => {
+	it('registers ribbon icon for open graph', async () => {
 		await plugin.onload();
 		expect(addRibbonIconSpy).toHaveBeenCalledWith(
 			'brain-circuit',
-			'Open Proxima graph',
+			'Open proxima graph',
 			expect.any(Function),
 		);
 	});
