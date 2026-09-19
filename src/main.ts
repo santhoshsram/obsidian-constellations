@@ -25,7 +25,7 @@ export default class ProximaPlugin extends Plugin {
 		this.statusBarEl = this.addStatusBarItem();
 		this.setStatus('');
 
-		this.addRibbonIcon('brain-circuit', 'Open Proxima graph', () => {
+		this.addRibbonIcon('brain-circuit', 'Open proxima graph', () => {
 			new ContextGraphModal(this.app, this).open();
 		});
 
@@ -51,8 +51,8 @@ export default class ProximaPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: 'open-proxima-graph',
-			name: 'Open Proxima graph',
+			id: 'open-graph',
+			name: 'Open graph',
 			callback: () => {
 				new ContextGraphModal(this.app, this).open();
 			},
