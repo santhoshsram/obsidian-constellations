@@ -1,6 +1,6 @@
 # Plugin Release and Submission Plan
 
-This document outlines the exact steps required to release the `obsidian-constellations` plugin and submit it to the Obsidian community plugin directory, based on the official Obsidian developer documentation.
+This document outlines the exact steps required to release the `obsidian-proxima` plugin and submit it to the Obsidian community plugin directory, based on the official Obsidian developer documentation.
 
 ## User Review Required
 
@@ -15,7 +15,7 @@ Before releasing, we must ensure the plugin meets Obsidian's guidelines:
   - Ensure `name`, `version`, `minAppVersion`, `description`, and `author` are correctly filled out.
 - **README.md**:
   - Must clearly explain what the plugin does, how to use it, and include any necessary screenshots/videos.
-  - We recently added the "Constellations" concept, which is great.
+  - We recently added the "Proxima" concept, which is great.
 - **Code Guidelines**:
   - Ensure all event listeners, intervals, and DOM elements are properly cleaned up in `onunload()` using `this.register*`.
   - Ensure the bundle size is minimized.
@@ -57,12 +57,12 @@ Once the GitHub Release is live, the final step is submitting the plugin to the 
    {
        "id": "proxima",
        "name": "Proxima",
-       "description": "Local-first semantic constellations: related notes, interactive star graph, and concept search — all on-device.",
+       "description": "Local-first semantic search: related notes, interactive proximity graph, and concept search, all on-device.",
        "author": "Santhosh Sundararaman",
-       "repo": "santhosh/obsidian-constellations" 
+       "repo": "santhoshsram/obsidian-proxima" 
    }
    ```
-   *(Note: replace `santhosh/obsidian-constellations` with your actual GitHub username/repo)*
+   *(Note: replace `santhoshsram/obsidian-proxima` with your actual GitHub username/repo)*
 4. **Commit & Push**: Commit this change and push it to your fork.
 5. **Open a Pull Request**: Open a PR against the `master` branch of `obsidianmd/obsidian-releases`.
 6. **Review Process**: Obsidian maintainers will review the code for security and performance guidelines. You may need to address their feedback before it gets merged.
