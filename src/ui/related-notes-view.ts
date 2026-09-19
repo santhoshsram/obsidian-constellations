@@ -5,7 +5,7 @@ import {
 	TFile,
 	type WorkspaceLeaf,
 } from 'obsidian';
-import type ConstellationsPlugin from '../main';
+import type ProximaPlugin from '../main';
 import type { BrainProgress } from '../brain';
 import type { RelatedNote } from '../search/related';
 import { getSectionDisplay } from './snippet';
@@ -16,7 +16,7 @@ import type { GraphData } from '../search/graph';
 export const VIEW_TYPE_RELATED = 'brain-related-notes';
 
 export class RelatedNotesView extends ItemView {
-	private plugin: ConstellationsPlugin;
+	private plugin: ProximaPlugin;
 	private unsubscribeProgress?: () => void;
 	private debouncedRefresh: DebouncedFn<[]>;
 	private wasIndexing = false;
@@ -29,7 +29,7 @@ export class RelatedNotesView extends ItemView {
 	private bodyEl: HTMLElement | null = null;
 	private currentRequestId = 0;
 
-	constructor(leaf: WorkspaceLeaf, plugin: ConstellationsPlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: ProximaPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 		this.mode = this.plugin.settings.sidebarViewMode ?? 'list';
@@ -52,7 +52,7 @@ export class RelatedNotesView extends ItemView {
 
 	onload(): void {
 		super.onload();
-		this.contentEl.addClass('constellations-related-view-content');
+		this.contentEl.addClass('proxima-related-view-content');
 		this.unsubscribeProgress = this.plugin.brain.onProgress(
 			(progress: BrainProgress) => {
 				const isNowIndexing = progress.isIndexing;
@@ -94,17 +94,17 @@ export class RelatedNotesView extends ItemView {
 		if (!isAttached) {
 			this.contentEl.empty();
 			this.headerEl = this.contentEl.createDiv({
-				cls: 'constellations-view-header',
+				cls: 'proxima-view-header',
 			});
 			const toggleGroup = this.headerEl.createDiv({
-				cls: 'constellations-view-toggle-group',
+				cls: 'proxima-view-toggle-group',
 			});
 			this.listBtn = toggleGroup.createEl('button', {
-				cls: `constellations-view-toggle ${this.mode === 'list' ? 'is-active' : ''}`,
+				cls: `proxima-view-toggle ${this.mode === 'list' ? 'is-active' : ''}`,
 				text: 'List',
 			});
 			this.graphBtn = toggleGroup.createEl('button', {
-				cls: `constellations-view-toggle ${this.mode === 'graph' ? 'is-active' : ''}`,
+				cls: `proxima-view-toggle ${this.mode === 'graph' ? 'is-active' : ''}`,
 				text: 'Graph',
 			});
 
@@ -121,7 +121,7 @@ export class RelatedNotesView extends ItemView {
 			});
 
 			this.bodyEl = this.contentEl.createDiv({
-				cls: 'constellations-view-body',
+				cls: 'proxima-view-body',
 			});
 		} else {
 			this.listBtn?.toggleClass('is-active', this.mode === 'list');
@@ -140,7 +140,7 @@ export class RelatedNotesView extends ItemView {
 
 		// Instantly render in-tab loading state
 		this.renderLoading(
-			mode === 'graph' ? 'Loading constellation…' : 'Finding related notes…',
+			mode === 'graph' ? 'Loading…' : 'Finding related notes…',
 		);
 
 		await this.refresh();
@@ -158,16 +158,16 @@ export class RelatedNotesView extends ItemView {
 		this.cleanupGraph();
 		this.bodyEl!.empty();
 		const container = this.bodyEl!.createDiv({
-			cls: 'constellations-empty-state-container',
+			cls: 'proxima-empty-state-container',
 		});
 		const loadingBox = container.createDiv({
-			cls: 'constellations-loading-state',
+			cls: 'proxima-loading-state',
 		});
 		loadingBox.createDiv({
-			cls: 'constellations-loading-spinner',
+			cls: 'proxima-loading-spinner',
 		});
 		loadingBox.createDiv({
-			cls: 'constellations-loading-text',
+			cls: 'proxima-loading-text',
 			text: message,
 		});
 	}
@@ -177,10 +177,10 @@ export class RelatedNotesView extends ItemView {
 		this.cleanupGraph();
 		this.bodyEl!.empty();
 		const container = this.bodyEl!.createDiv({
-			cls: 'constellations-empty-state-container',
+			cls: 'proxima-empty-state-container',
 		});
 		container.createDiv({
-			cls: 'constellations-empty-state',
+			cls: 'proxima-empty-state',
 			text: message,
 		});
 	}
@@ -239,8 +239,8 @@ export class RelatedNotesView extends ItemView {
 		}
 
 		if (this.mode === 'graph') {
-			if (!this.bodyEl?.querySelector('.constellations-loading-state')) {
-				this.renderLoading('Loading constellation…');
+			if (!this.bodyEl?.querySelector('.proxima-loading-state')) {
+				this.renderLoading('Loading…');
 			}
 			const graphData = await brain.getGraphData({
 				type: 'note',
@@ -255,7 +255,7 @@ export class RelatedNotesView extends ItemView {
 			return;
 		}
 
-		if (!this.bodyEl?.querySelector('.constellations-loading-state')) {
+		if (!this.bodyEl?.querySelector('.proxima-loading-state')) {
 			this.renderLoading('Finding related notes…');
 		}
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -286,7 +286,7 @@ export class RelatedNotesView extends ItemView {
 		this.cleanupGraph();
 		this.bodyEl!.empty();
 		const graphContainer = this.bodyEl!.createDiv({
-			cls: 'constellations-context-graph-sidebar-container',
+			cls: 'proxima-context-graph-sidebar-container',
 		});
 
 		this.graphEngine = new ContextGraphEngine(graphContainer, {
@@ -312,7 +312,7 @@ export class RelatedNotesView extends ItemView {
 		this.cleanupGraph();
 		this.bodyEl!.empty();
 		const listEl = this.bodyEl!.createDiv({
-			cls: 'constellations-related-notes',
+			cls: 'proxima-related-notes',
 		});
 
 		const maxNotes = this.plugin.settings.maxRelatedNotes ?? 10;
@@ -320,20 +320,20 @@ export class RelatedNotesView extends ItemView {
 
 		for (const note of related.slice(0, maxNotes)) {
 			const cardEl = listEl.createDiv({
-				cls: 'constellations-related-note-card',
+				cls: 'proxima-related-note-card',
 			});
 
 			const headerEl = cardEl.createDiv({
-				cls: 'constellations-related-note-header',
+				cls: 'proxima-related-note-header',
 			});
 			const iconEl = headerEl.createSpan({
-				cls: 'constellations-related-note-icon',
+				cls: 'proxima-related-note-icon',
 			});
 			setIcon(iconEl, 'file-text');
 
 			const noteTitle = this.getNoteTitle(note.filePath);
 			headerEl.createSpan({
-				cls: 'constellations-related-note-title',
+				cls: 'proxima-related-note-title',
 				text: noteTitle,
 			});
 
@@ -343,23 +343,23 @@ export class RelatedNotesView extends ItemView {
 			});
 
 			const sectionsEl = cardEl.createDiv({
-				cls: 'constellations-related-note-sections',
+				cls: 'proxima-related-note-sections',
 			});
 
 			const chunks = (note.chunks ?? []).slice(0, maxChunks);
 			for (const chunk of chunks) {
 				const sectionItemEl = sectionsEl.createDiv({
-					cls: 'constellations-related-section-item',
+					cls: 'proxima-related-section-item',
 				});
 
 				sectionItemEl.createSpan({
-					cls: 'constellations-related-section-bullet',
+					cls: 'proxima-related-section-bullet',
 					text: '•',
 				});
 
 				const { label } = getSectionDisplay(chunk.record);
 				sectionItemEl.createSpan({
-					cls: 'constellations-related-section-text',
+					cls: 'proxima-related-section-text',
 					text: label,
 				});
 

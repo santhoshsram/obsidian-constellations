@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ContextGraphModal } from '../../src/ui/graph/context-graph-modal';
 import { TFile, type MockElement } from '../mocks/obsidian';
 import type { App } from 'obsidian';
-import type ConstellationsPlugin from '../../src/main';
+import type ProximaPlugin from '../../src/main';
 import type { GraphData, GraphNode } from '../../src/search/graph';
 import type { ContextGraphEngine } from '../../src/ui/graph/context-graph-engine';
 
@@ -13,7 +13,7 @@ interface ModalInternalAccess {
 
 describe('ContextGraphModal', () => {
 	let modal: ContextGraphModal;
-	let mockPlugin: ConstellationsPlugin;
+	let mockPlugin: ProximaPlugin;
 	let mockOpenLinkText: ReturnType<typeof vi.fn>;
 	let mockGetGraphData: ReturnType<typeof vi.fn>;
 	let mockSetActiveLeaf: ReturnType<typeof vi.fn>;
@@ -58,7 +58,7 @@ describe('ContextGraphModal', () => {
 				isReady: true,
 				getGraphData: mockGetGraphData,
 			},
-		} as unknown as ConstellationsPlugin;
+		} as unknown as ProximaPlugin;
 
 		modal = new ContextGraphModal(mockApp as unknown as App, mockPlugin);
 	});
@@ -72,14 +72,14 @@ describe('ContextGraphModal', () => {
 		modal.open();
 		await vi.runAllTimersAsync();
 
-		const searchInput = modal.contentEl.querySelector('.constellations-context-graph-search-input');
+		const searchInput = modal.contentEl.querySelector('.proxima-context-graph-search-input');
 		expect(searchInput).toBeDefined();
 
-		const centerTitle = modal.contentEl.querySelector('.constellations-context-graph-center-title');
+		const centerTitle = modal.contentEl.querySelector('.proxima-context-graph-center-title');
 		expect(centerTitle).toBeDefined();
 		expect(centerTitle?.textContent).toBe('Active');
 
-		const openBtn = modal.contentEl.querySelector('.constellations-context-graph-open-btn');
+		const openBtn = modal.contentEl.querySelector('.proxima-context-graph-open-btn');
 		expect(openBtn).toBeDefined();
 	});
 
@@ -87,7 +87,7 @@ describe('ContextGraphModal', () => {
 		modal.open();
 		await vi.runAllTimersAsync();
 
-		const customClose = modal.contentEl.querySelector('.constellations-context-graph-close-btn');
+		const customClose = modal.contentEl.querySelector('.proxima-context-graph-close-btn');
 		expect(customClose).toBeNull();
 	});
 
@@ -96,7 +96,7 @@ describe('ContextGraphModal', () => {
 		await vi.runAllTimersAsync();
 
 		const searchInput = modal.contentEl.querySelector(
-			'.constellations-context-graph-search-input',
+			'.proxima-context-graph-search-input',
 		) as unknown as MockElement & { value?: string; attributes?: Record<string, string> };
 		expect(searchInput.attributes?.placeholder).toBe('Search…');
 		searchInput.value = 'artificial intelligence';
@@ -125,7 +125,7 @@ describe('ContextGraphModal', () => {
 		await vi.runAllTimersAsync();
 
 		const searchInput = modal.contentEl.querySelector(
-			'.constellations-context-graph-search-input',
+			'.proxima-context-graph-search-input',
 		) as unknown as MockElement & { value?: string };
 		searchInput.value = 'instant search query';
 
@@ -150,10 +150,10 @@ describe('ContextGraphModal', () => {
 		await vi.runAllTimersAsync();
 
 		const searchInput = modal.contentEl.querySelector(
-			'.constellations-context-graph-search-input',
+			'.proxima-context-graph-search-input',
 		) as unknown as MockElement & { value?: string; focus: () => void };
 		searchInput.focus = vi.fn();
-		const clearBtn = modal.contentEl.querySelector('.constellations-context-graph-search-clear') as unknown as MockElement;
+		const clearBtn = modal.contentEl.querySelector('.proxima-context-graph-search-clear') as unknown as MockElement;
 
 		expect(clearBtn.className).toContain('is-hidden');
 
@@ -187,9 +187,9 @@ describe('ContextGraphModal', () => {
 		modal.open();
 		await vi.runAllTimersAsync();
 
-		const searchContainer = modal.contentEl.querySelector('.constellations-context-graph-search-container');
+		const searchContainer = modal.contentEl.querySelector('.proxima-context-graph-search-container');
 		const searchInput = modal.contentEl.querySelector(
-			'.constellations-context-graph-search-input',
+			'.proxima-context-graph-search-input',
 		) as unknown as MockElement & { value?: string };
 		searchInput.value = 'deep learning';
 
@@ -227,7 +227,7 @@ describe('ContextGraphModal', () => {
 		await vi.runAllTimersAsync();
 
 		const openBtn = modal.contentEl.querySelector(
-			'.constellations-context-graph-open-btn',
+			'.proxima-context-graph-open-btn',
 		) as unknown as MockElement | null;
 		openBtn?.click();
 
@@ -244,7 +244,7 @@ describe('ContextGraphModal', () => {
 		await vi.runAllTimersAsync();
 
 		const openBtn = modal.contentEl.querySelector(
-			'.constellations-context-graph-open-btn',
+			'.proxima-context-graph-open-btn',
 		) as unknown as MockElement | null;
 		openBtn?.click();
 		await Promise.resolve();
@@ -289,7 +289,7 @@ describe('ContextGraphModal', () => {
 
 		// Check immediate optimistic reaction
 		expect(optimisticFocusSpy).toHaveBeenCalledWith('Related.md', 'Related');
-		const centerTitle = modal.contentEl.querySelector('.constellations-context-graph-center-title');
+		const centerTitle = modal.contentEl.querySelector('.proxima-context-graph-center-title');
 		expect(centerTitle?.textContent).toBe('Related');
 
 		// Resolve background reseed

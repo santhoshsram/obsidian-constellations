@@ -1,8 +1,8 @@
-# Constellations Obsidian Plugin
+# Proxima Obsidian Plugin
 
 ## Project overview
 
-- **Target**: Constellations — Local-first semantic discovery plugin for Obsidian (related notes sidebar, interactive constellation star graph, and on-device WebGPU/WASM vector retrieval).
+- **Target**: Proxima, a local-first semantic discovery plugin for Obsidian (related notes sidebar, interactive Proxima graph, and on-device WebGPU/WASM vector retrieval).
 - **Entry point**: `src/main.ts` compiled to `main.js` and loaded by Obsidian.
 - **Required release artifacts**: `main.js`, `manifest.json`, and `styles.css`.
 

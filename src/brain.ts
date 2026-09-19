@@ -5,7 +5,7 @@
  */
 
 import { Notice } from 'obsidian';
-import type ConstellationsPlugin from './main';
+import type ProximaPlugin from './main';
 import { ChunkIndex } from './index/chunk-index';
 import { BruteForceVectorStore } from './index/vector-store';
 import { IndexingService } from './index/indexing-service';
@@ -88,7 +88,7 @@ export class Brain {
 	};
 	private onProgressListeners: Array<(progress: BrainProgress) => void> = [];
 
-	constructor(private plugin: ConstellationsPlugin) {}
+	constructor(private plugin: ProximaPlugin) {}
 
 	setEmbeddingStatus(status: ModelStatus): void {
 		this.embeddingStatus = status;

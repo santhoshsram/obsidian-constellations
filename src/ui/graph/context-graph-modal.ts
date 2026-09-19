@@ -6,7 +6,7 @@
  */
 
 import { Modal, type App, setIcon } from 'obsidian';
-import type ConstellationsPlugin from '../../main';
+import type ProximaPlugin from '../../main';
 import { ContextGraphEngine } from './context-graph-engine';
 import type { GraphData, GraphNode, GraphSeed } from '../../search/graph';
 import { debounce, type DebouncedFn } from '../../utils/debounce';
@@ -28,7 +28,7 @@ export class ContextGraphModal extends Modal {
 
 	constructor(
 		app: App,
-		private plugin: ConstellationsPlugin,
+		private plugin: ProximaPlugin,
 	) {
 		super(app);
 		this.debouncedSearch = debounce((query: string) => {
@@ -37,27 +37,27 @@ export class ContextGraphModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.modalEl.addClass('constellations-context-graph-modal');
+		this.modalEl.addClass('proxima-context-graph-modal');
 
 		const { contentEl } = this;
 		contentEl.empty();
 
 		// 1. Top floating overlay header
 		const headerEl = contentEl.createDiv({
-			cls: 'constellations-context-graph-header',
+			cls: 'proxima-context-graph-header',
 		});
 
 		// Left: Search input
 		this.searchWrapper = headerEl.createDiv({
-			cls: 'constellations-context-graph-search-container',
+			cls: 'proxima-context-graph-search-container',
 		});
 		const searchIconEl = this.searchWrapper.createSpan({
-			cls: 'constellations-context-graph-search-icon',
+			cls: 'proxima-context-graph-search-icon',
 		});
 		setIcon(searchIconEl, 'search');
 
 		this.searchInput = this.searchWrapper.createEl('input', {
-			cls: 'constellations-context-graph-search-input',
+			cls: 'proxima-context-graph-search-input',
 			attr: {
 				type: 'text',
 				placeholder: 'Search…',
@@ -65,7 +65,7 @@ export class ContextGraphModal extends Modal {
 		});
 
 		this.searchClearBtn = this.searchWrapper.createSpan({
-			cls: 'constellations-context-graph-search-clear is-hidden',
+			cls: 'proxima-context-graph-search-clear is-hidden',
 		});
 		setIcon(this.searchClearBtn, 'x');
 		this.searchClearBtn.addEventListener('click', () => {
@@ -108,14 +108,14 @@ export class ContextGraphModal extends Modal {
 
 		// Right: Active node badge + Open note button
 		const centerWrapper = headerEl.createDiv({
-			cls: 'constellations-context-graph-center-container',
+			cls: 'proxima-context-graph-center-container',
 		});
 		this.centerTitleEl = centerWrapper.createSpan({
-			cls: 'constellations-context-graph-center-title',
-			text: 'Constellation Graph',
+			cls: 'proxima-context-graph-center-title',
+			text: 'Proxima Graph',
 		});
 		this.openButtonEl = centerWrapper.createEl('button', {
-			cls: 'constellations-context-graph-open-btn',
+			cls: 'proxima-context-graph-open-btn',
 			text: 'Open note ↗',
 		});
 		this.openButtonEl.addEventListener('click', () => {
@@ -126,11 +126,11 @@ export class ContextGraphModal extends Modal {
 
 		// 2. Canvas Container
 		const canvasContainer = contentEl.createDiv({
-			cls: 'constellations-context-graph-canvas-container',
+			cls: 'proxima-context-graph-canvas-container',
 		});
 
 		this.emptyStateEl = contentEl.createDiv({
-			cls: 'constellations-context-graph-empty is-hidden',
+			cls: 'proxima-context-graph-empty is-hidden',
 		});
 
 		// 3. Mount engine

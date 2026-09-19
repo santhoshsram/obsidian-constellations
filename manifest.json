@@ -1,9 +1,9 @@
 {
-	"id": "constellations",
-	"name": "Constellations",
+	"id": "proxima",
+	"name": "Proxima",
 	"version": "1.0.1",
 	"minAppVersion": "1.13.0",
-	"description": "Local-first semantic constellations: related notes, interactive star graph, and concept search — all on-device.",
+	"description": "Local-first semantic search: related notes, interactive proximity graph, and concept search, all on-device.",
 	"author": "Santhosh Sundararaman",
 	"isDesktopOnly": true
 }
