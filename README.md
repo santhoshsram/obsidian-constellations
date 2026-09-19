@@ -8,33 +8,33 @@ Proxima surfaces notes that are semantically similar to the note you're currentl
 ## Screenshots
 
 ### Interactive Proxima Graph
-The interactive graph showing related concepts orbiting your current note.
+Shows notes conceptually close to the current note.
 
 ![Proxima Graph](assets/graph.png)
 
 ### Related Notes Sidebar
-Surfaces semantically relevant notes and exact matching passages in real time as you write.
+Surfaces notes that are conceptually related to the current note based on their content.
 
 ![Related Notes Sidebar](assets/related.png)
 
 ### Proxima Graph in Sidebar
-Dock the Proxima graph in the sidebar to keep semantic context visible while exploring notes.
+Visual representation of the conceptually related notes in the side bar.
 
 ![Graph in Sidebar](assets/sidebar.png)
 
 ### Plugin Settings
-Select your local embedding model, view reranker status, and choose your semantic matching mode.
+Configure indexing, embedding and reranking models, and how related notes are matched.
 
-![Plugin Settings - Models and Matching](assets/settings-1.png)
+![Plugin Settings - Indexing and models](assets/settings-1.png)
 
-Fine-tune similarity thresholds, result limits, and tab behaviors.
+Fine-tune matching mode, result limits, similarity thresholds, and debug logging.
 
-![Plugin Settings - Retrieval Tuning](assets/settings-2.png)
+![Plugin Settings - Matching and tuning](assets/settings-2.png)
 
 ## Highlights
 
-- **Related Notes View:** Surfaces semantically relevant notes and exact matching passages in real time as you write.
-- **Proxima Graph:** An interactive graph with physics-based semantic distance, optimistic centering, and hover sneak-peeks.
+- **Related Notes View:** Surfaces notes conceptually similar to the current one.
+- **Proxima Graph:** An interactive graph of conceptually related notes, with hover previews.
 - **Two-Stage Funnel:** Dense vector retrieval refined by an on-device cross-encoder reranker for high precision.
 - **100% Local & Private:** Runs entirely on-device via WebGPU/WASM. Zero telemetry, no cloud APIs, no external subscriptions.
 
@@ -64,7 +64,7 @@ Proxima requires WebGPU (with a WASM fallback) for on-device inference, which Ob
 
 | Command | Action |
 | :--- | :--- |
-| `Open Proxima graph` | Opens the full-screen interactive Proxima graph |
+| `Open graph` | Opens the full-screen interactive Proxima graph |
 | `Show related notes` | Toggles the related notes companion sidebar |
 | `Reindex notes` | Manually triggers a re-index of new or modified vault notes |
 
@@ -86,4 +86,4 @@ npm run lint   # eslint validation
 
 ## Documentation
 
-- [Technical Architecture](docs/architecture.md) — deep dive on the chunking pipeline, index storage, and inference engine.
+- [Technical Architecture](docs/architecture.md): deep dive on the chunking pipeline, index storage, and inference engine.
